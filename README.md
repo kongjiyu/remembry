@@ -53,6 +53,11 @@ Record/Upload Audio → Transcription (Speaker Diarization) → AI Processing (G
 
 ### Module 2: Audio Ingestion
 - Upload audio files (MP3, WAV, M4A, WebM)
+- **In-browser audio recording** with microphone access
+  - Start/stop/pause/resume recording controls
+  - Real-time duration display
+  - Audio playback preview before submission
+  - Supported browsers: Chrome, Firefox, Edge (Safari with limitations)
 - Meeting metadata input (title, date, participants)
 - Upload progress indicator
 - Audio file validation (size, format, duration)

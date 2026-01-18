@@ -1,201 +1,322 @@
 "use client";
 
+import { useState } from "react";
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Upload, FileAudio, X, Loader2 } from "lucide-react";
-import { useState, useCallback } from "react";
+import { AudioRecorder } from "@/components/ui/audio-recorder";
+import { Upload, Mic, FileAudio, X, Play, Pause, Loader2 } from "lucide-react";
+import { cn } from "@/lib/utils";
+
+type InputMode = "upload" | "record";
+
+interface AudioFile {
+    file: File | Blob;
+    name: string;
+    size: number;
+    duration: number;
+    url: string;
+}
+
+function formatFileSize(bytes: number): string {
+    if (bytes === 0) return "0 Bytes";
+    const k = 1024;
+    const sizes = ["Bytes", "KB", "MB", "GB"];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
+}
+
+function formatDuration(seconds: number): string {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, "0")}`;
+}
 
 export default function NewMeetingPage() {
-    const [file, setFile] = useState<File | null>(null);
+    const [inputMode, setInputMode] = useState<InputMode>("upload");
+    const [audioFile, setAudioFile] = useState<AudioFile | null>(null);
+    const [isPlaying, setIsPlaying] = useState(false);
     const [isDragging, setIsDragging] = useState(false);
-    const [isUploading, setIsUploading] = useState(false);
+    const [isProcessing, setIsProcessing] = useState(false);
 
-    const handleDragOver = useCallback((e: React.DragEvent) => {
+    // Form state
+    const [title, setTitle] = useState("");
+    const [participants, setParticipants] = useState("");
+    const [notes, setNotes] = useState("");
+
+    const acceptedFormats = ["audio/mp3", "audio/mpeg", "audio/wav", "audio/x-wav", "audio/m4a", "audio/x-m4a", "audio/webm", "audio/ogg"];
+
+    const handleFileSelect = async (file: File) => {
+        if (!acceptedFormats.includes(file.type) && !file.name.match(/\.(mp3|wav|m4a|webm|ogg)$/i)) {
+            alert("Please upload an audio file (MP3, WAV, M4A, or WebM)");
+            return;
+        }
+
+        const url = URL.createObjectURL(file);
+
+        // Get audio duration
+        const audio = new Audio(url);
+        audio.addEventListener("loadedmetadata", () => {
+            setAudioFile({
+                file,
+                name: file.name,
+                size: file.size,
+                duration: Math.floor(audio.duration),
+                url,
+            });
+        });
+    };
+
+    const handleDrop = (e: React.DragEvent) => {
+        e.preventDefault();
+        setIsDragging(false);
+
+        const files = e.dataTransfer.files;
+        if (files.length > 0) {
+            handleFileSelect(files[0]);
+        }
+    };
+
+    const handleDragOver = (e: React.DragEvent) => {
         e.preventDefault();
         setIsDragging(true);
-    }, []);
-
-    const handleDragLeave = useCallback((e: React.DragEvent) => {
-        e.preventDefault();
-        setIsDragging(false);
-    }, []);
-
-    const handleDrop = useCallback((e: React.DragEvent) => {
-        e.preventDefault();
-        setIsDragging(false);
-        const droppedFile = e.dataTransfer.files[0];
-        if (droppedFile && droppedFile.type.startsWith("audio/")) {
-            setFile(droppedFile);
-        }
-    }, []);
-
-    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const selectedFile = e.target.files?.[0];
-        if (selectedFile) {
-            setFile(selectedFile);
-        }
     };
 
-    const handleSubmit = async (e: React.FormEvent) => {
+    const handleDragLeave = (e: React.DragEvent) => {
         e.preventDefault();
-        if (!file) return;
+        setIsDragging(false);
+    };
 
-        setIsUploading(true);
-        // TODO: Implement actual upload logic
+    const handleRecordingComplete = (blob: Blob, duration: number) => {
+        const url = URL.createObjectURL(blob);
+        const now = new Date();
+        const fileName = `Recording_${now.toISOString().slice(0, 10)}_${now.toISOString().slice(11, 19).replace(/:/g, "-")}.webm`;
+
+        setAudioFile({
+            file: blob,
+            name: fileName,
+            size: blob.size,
+            duration,
+            url,
+        });
+    };
+
+    const handleRemoveAudio = () => {
+        if (audioFile) {
+            URL.revokeObjectURL(audioFile.url);
+        }
+        setAudioFile(null);
+    };
+
+    const handleSubmit = async () => {
+        if (!audioFile) return;
+
+        setIsProcessing(true);
+
+        // TODO: Implement actual upload and processing logic
+        // For now, simulate processing
         await new Promise(resolve => setTimeout(resolve, 2000));
-        setIsUploading(false);
-    };
 
-    const formatFileSize = (bytes: number) => {
-        if (bytes < 1024 * 1024) {
-            return `${(bytes / 1024).toFixed(1)} KB`;
-        }
-        return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+        setIsProcessing(false);
+        // TODO: Navigate to processing/meeting detail page
     };
 
     return (
         <DashboardLayout
-            breadcrumbs={[{ label: "Meetings", href: "/meetings" }, { label: "Upload" }]}
-            title="Upload Recording"
+            breadcrumbs={[
+                { label: "Meetings", href: "/meetings" },
+                { label: "New Meeting" }
+            ]}
+            title="New Meeting"
         >
-            <div className="max-w-2xl">
-                <form onSubmit={handleSubmit} className="space-y-6">
-                    {/* File Upload */}
-                    <Card>
-                        <CardHeader>
-                            <CardTitle>Audio File</CardTitle>
-                            <CardDescription>
-                                Upload your meeting recording. Supported formats: MP3, WAV, M4A, WebM (max 100MB)
-                            </CardDescription>
-                        </CardHeader>
-                        <CardContent>
-                            {!file ? (
-                                <div
-                                    className={`relative border-2 border-dashed rounded-lg p-8 text-center transition-colors ${isDragging
-                                            ? "border-primary bg-primary/5"
-                                            : "border-muted-foreground/25 hover:border-primary/50"
-                                        }`}
-                                    onDragOver={handleDragOver}
-                                    onDragLeave={handleDragLeave}
-                                    onDrop={handleDrop}
-                                >
-                                    <input
-                                        type="file"
-                                        accept="audio/*"
-                                        onChange={handleFileChange}
-                                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                                    />
-                                    <div className="flex flex-col items-center gap-3">
-                                        <div className="flex size-14 items-center justify-center rounded-full bg-primary/10">
-                                            <Upload className="size-7 text-primary" />
-                                        </div>
-                                        <div>
-                                            <p className="font-medium">Drop your audio file here</p>
-                                            <p className="text-sm text-muted-foreground">or click to browse</p>
-                                        </div>
+            <div className="max-w-3xl mx-auto space-y-6">
+                {/* Mode Toggle */}
+                <div className="flex gap-2 p-1 bg-muted rounded-lg w-fit">
+                    <Button
+                        variant={inputMode === "upload" ? "default" : "ghost"}
+                        size="sm"
+                        onClick={() => setInputMode("upload")}
+                        className="gap-2"
+                    >
+                        <Upload className="size-4" />
+                        Upload File
+                    </Button>
+                    <Button
+                        variant={inputMode === "record" ? "default" : "ghost"}
+                        size="sm"
+                        onClick={() => setInputMode("record")}
+                        className="gap-2"
+                    >
+                        <Mic className="size-4" />
+                        Record Audio
+                    </Button>
+                </div>
+
+                {/* Audio Input Section */}
+                <Card>
+                    <CardHeader>
+                        <CardTitle>
+                            {inputMode === "upload" ? "Upload Recording" : "Record Meeting"}
+                        </CardTitle>
+                        <CardDescription>
+                            {inputMode === "upload"
+                                ? "Upload an audio file from your meeting (MP3, WAV, M4A, or WebM)"
+                                : "Record your meeting directly from your browser"
+                            }
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        {audioFile ? (
+                            /* Audio Preview */
+                            <div className="border rounded-lg p-4 bg-muted/30">
+                                <div className="flex items-center gap-4">
+                                    <div className="flex size-12 items-center justify-center rounded-lg bg-primary/10">
+                                        <FileAudio className="size-6 text-primary" />
                                     </div>
-                                </div>
-                            ) : (
-                                <div className="flex items-center justify-between p-4 rounded-lg bg-muted/50">
-                                    <div className="flex items-center gap-3">
-                                        <div className="flex size-10 items-center justify-center rounded-lg bg-primary/10">
-                                            <FileAudio className="size-5 text-primary" />
-                                        </div>
-                                        <div>
-                                            <p className="font-medium truncate max-w-xs">{file.name}</p>
-                                            <p className="text-sm text-muted-foreground">{formatFileSize(file.size)}</p>
-                                        </div>
+                                    <div className="flex-1 min-w-0">
+                                        <p className="font-medium truncate">{audioFile.name}</p>
+                                        <p className="text-sm text-muted-foreground">
+                                            {formatFileSize(audioFile.size)} · {formatDuration(audioFile.duration)}
+                                        </p>
                                     </div>
                                     <Button
-                                        type="button"
                                         variant="ghost"
                                         size="icon"
-                                        onClick={() => setFile(null)}
-                                        disabled={isUploading}
+                                        onClick={handleRemoveAudio}
+                                        className="text-muted-foreground hover:text-destructive"
                                     >
                                         <X className="size-4" />
                                     </Button>
                                 </div>
-                            )}
-                        </CardContent>
-                    </Card>
 
-                    {/* Meeting Details */}
-                    <Card>
-                        <CardHeader>
-                            <CardTitle>Meeting Details</CardTitle>
-                            <CardDescription>
-                                Add optional information about this meeting
-                            </CardDescription>
-                        </CardHeader>
-                        <CardContent className="space-y-4">
-                            <div className="space-y-2">
-                                <label htmlFor="title" className="text-sm font-medium">
-                                    Meeting Title
-                                </label>
-                                <Input
-                                    id="title"
-                                    placeholder="e.g., Weekly Team Standup"
+                                {/* Audio Player */}
+                                <audio
+                                    src={audioFile.url}
+                                    controls
+                                    className="w-full mt-4 rounded"
+                                    onPlay={() => setIsPlaying(true)}
+                                    onPause={() => setIsPlaying(false)}
+                                    onEnded={() => setIsPlaying(false)}
                                 />
                             </div>
-                            <div className="grid grid-cols-2 gap-4">
-                                <div className="space-y-2">
-                                    <label htmlFor="date" className="text-sm font-medium">
-                                        Date
-                                    </label>
-                                    <Input
-                                        id="date"
-                                        type="date"
-                                        defaultValue={new Date().toISOString().split('T')[0]}
-                                    />
-                                </div>
-                                <div className="space-y-2">
-                                    <label htmlFor="time" className="text-sm font-medium">
-                                        Time
-                                    </label>
-                                    <Input
-                                        id="time"
-                                        type="time"
-                                        defaultValue="10:00"
-                                    />
-                                </div>
-                            </div>
-                            <div className="space-y-2">
-                                <label htmlFor="participants" className="text-sm font-medium">
-                                    Participants (optional)
-                                </label>
-                                <Textarea
-                                    id="participants"
-                                    placeholder="Enter participant names, one per line"
-                                    rows={3}
+                        ) : inputMode === "upload" ? (
+                            /* Upload Dropzone */
+                            <div
+                                onDrop={handleDrop}
+                                onDragOver={handleDragOver}
+                                onDragLeave={handleDragLeave}
+                                className={cn(
+                                    "border-2 border-dashed rounded-lg p-12 text-center transition-colors cursor-pointer",
+                                    isDragging
+                                        ? "border-primary bg-primary/5"
+                                        : "border-muted-foreground/25 hover:border-primary/50"
+                                )}
+                            >
+                                <input
+                                    type="file"
+                                    accept="audio/*,.mp3,.wav,.m4a,.webm,.ogg"
+                                    onChange={(e) => e.target.files?.[0] && handleFileSelect(e.target.files[0])}
+                                    className="hidden"
+                                    id="audio-upload"
                                 />
+                                <label htmlFor="audio-upload" className="cursor-pointer">
+                                    <div className="flex size-16 items-center justify-center rounded-full bg-primary/10 mx-auto mb-4">
+                                        <Upload className="size-8 text-primary" />
+                                    </div>
+                                    <p className="text-lg font-medium mb-1">
+                                        Drop your audio file here
+                                    </p>
+                                    <p className="text-muted-foreground mb-4">
+                                        or click to browse
+                                    </p>
+                                    <p className="text-sm text-muted-foreground">
+                                        Supports MP3, WAV, M4A, and WebM (max 500MB)
+                                    </p>
+                                </label>
                             </div>
-                        </CardContent>
-                    </Card>
+                        ) : (
+                            /* Audio Recorder */
+                            <AudioRecorder onRecordingComplete={handleRecordingComplete} />
+                        )}
+                    </CardContent>
+                </Card>
 
-                    {/* Submit */}
-                    <div className="flex gap-4">
-                        <Button type="submit" size="lg" disabled={!file || isUploading} className="gap-2">
-                            {isUploading ? (
-                                <>
-                                    <Loader2 className="size-4 animate-spin" />
-                                    Uploading...
-                                </>
-                            ) : (
-                                <>
-                                    <Upload className="size-4" />
-                                    Upload & Transcribe
-                                </>
-                            )}
-                        </Button>
-                        <Button type="button" variant="outline" size="lg" onClick={() => setFile(null)}>
-                            Cancel
-                        </Button>
-                    </div>
-                </form>
+                {/* Meeting Details */}
+                <Card>
+                    <CardHeader>
+                        <CardTitle>Meeting Details</CardTitle>
+                        <CardDescription>
+                            Add information about your meeting (optional)
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                        <div className="space-y-2">
+                            <label htmlFor="title" className="text-sm font-medium">
+                                Meeting Title
+                            </label>
+                            <Input
+                                id="title"
+                                placeholder="e.g., Weekly Team Standup"
+                                value={title}
+                                onChange={(e) => setTitle(e.target.value)}
+                            />
+                        </div>
+
+                        <div className="space-y-2">
+                            <label htmlFor="participants" className="text-sm font-medium">
+                                Participants
+                            </label>
+                            <Input
+                                id="participants"
+                                placeholder="e.g., John, Sarah, Mike"
+                                value={participants}
+                                onChange={(e) => setParticipants(e.target.value)}
+                            />
+                            <p className="text-xs text-muted-foreground">
+                                Separate names with commas for speaker identification
+                            </p>
+                        </div>
+
+                        <div className="space-y-2">
+                            <label htmlFor="notes" className="text-sm font-medium">
+                                Additional Notes
+                            </label>
+                            <Textarea
+                                id="notes"
+                                placeholder="Any context about the meeting..."
+                                value={notes}
+                                onChange={(e) => setNotes(e.target.value)}
+                                rows={3}
+                            />
+                        </div>
+                    </CardContent>
+                </Card>
+
+                {/* Submit Button */}
+                <div className="flex justify-end gap-3">
+                    <Button variant="outline" asChild>
+                        <a href="/meetings">Cancel</a>
+                    </Button>
+                    <Button
+                        onClick={handleSubmit}
+                        disabled={!audioFile || isProcessing}
+                        className="gap-2"
+                    >
+                        {isProcessing ? (
+                            <>
+                                <Loader2 className="size-4 animate-spin" />
+                                Processing...
+                            </>
+                        ) : (
+                            <>
+                                <Upload className="size-4" />
+                                Start Transcription
+                            </>
+                        )}
+                    </Button>
+                </div>
             </div>
         </DashboardLayout>
     );
