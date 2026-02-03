@@ -34,6 +34,7 @@ import {
     User,
     ChevronUp,
     Sparkles,
+    FolderKanban,
 } from "lucide-react";
 
 const navItems = [
@@ -41,6 +42,11 @@ const navItems = [
         title: "Dashboard",
         url: "/dashboard",
         icon: LayoutDashboard,
+    },
+    {
+        title: "Projects",
+        url: "/projects",
+        icon: FolderKanban,
     },
     {
         title: "Meetings",
@@ -135,7 +141,7 @@ export function AppSidebar() {
                 <SidebarMenu>
                     <SidebarMenuItem>
                         <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
+                            <DropdownMenuTrigger asChild suppressHydrationWarning>
                                 <SidebarMenuButton
                                     size="lg"
                                     className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"

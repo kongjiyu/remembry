@@ -1,23 +1,43 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { AudioRecorder } from "@/components/ui/audio-recorder";
-import { Upload, Mic, FileAudio, X, Play, Pause, Loader2 } from "lucide-react";
+import { Upload, Mic, FileAudio, FileText, X, Play, Pause, Loader2, FolderKanban, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+
+interface Project {
+    id: string;
+    name: string;
+    ragStoreName: string;
+    displayName: string;
+    createdAt: string;
+    meetings: any[];
+    meetingCount: number;
+}
 
 type InputMode = "upload" | "record";
+type FileType = "audio" | "text";
 
-interface AudioFile {
+interface UploadedFile {
     file: File | Blob;
     name: string;
     size: number;
-    duration: number;
-    url: string;
+    duration?: number;
+    url?: string;
+    fileType: FileType;
 }
 
 function formatFileSize(bytes: number): string {
@@ -35,8 +55,9 @@ function formatDuration(seconds: number): string {
 }
 
 export default function NewMeetingPage() {
+    const router = useRouter();
     const [inputMode, setInputMode] = useState<InputMode>("upload");
-    const [audioFile, setAudioFile] = useState<AudioFile | null>(null);
+    const [uploadedFile, setUploadedFile] = useState<UploadedFile | null>(null);
     const [isPlaying, setIsPlaying] = useState(false);
     const [isDragging, setIsDragging] = useState(false);
     const [isProcessing, setIsProcessing] = useState(false);
@@ -45,12 +66,51 @@ export default function NewMeetingPage() {
     const [title, setTitle] = useState("");
     const [participants, setParticipants] = useState("");
     const [notes, setNotes] = useState("");
+    
+    // Project selection
+    const [projects, setProjects] = useState<Project[]>([]);
+    const [selectedProject, setSelectedProject] = useState<Project | null>(null);
+    const [loadingProjects, setLoadingProjects] = useState(true);
 
-    const acceptedFormats = ["audio/mp3", "audio/mpeg", "audio/wav", "audio/x-wav", "audio/m4a", "audio/x-m4a", "audio/webm", "audio/ogg"];
+    useEffect(() => {
+        fetchProjects();
+    }, []);
+
+    const fetchProjects = async () => {
+        try {
+            const response = await fetch('/api/projects');
+            if (response.ok) {
+                const data = await response.json();
+                setProjects(data.projects || []);
+                if (data.projects.length > 0) {
+                    setSelectedProject(data.projects[0]);
+                }
+            }
+        } catch (error) {
+            console.error('Error fetching projects:', error);
+        } finally {
+            setLoadingProjects(false);
+        }
+    };
+
+    const acceptedAudioFormats = ["audio/mp3", "audio/mpeg", "audio/wav", "audio/x-wav", "audio/m4a", "audio/x-m4a", "audio/webm", "audio/ogg"];
+    const acceptedTextFormats = ["text/plain"];
 
     const handleFileSelect = async (file: File) => {
-        if (!acceptedFormats.includes(file.type) && !file.name.match(/\.(mp3|wav|m4a|webm|ogg)$/i)) {
-            alert("Please upload an audio file (MP3, WAV, M4A, or WebM)");
+        // Check if it's a text file
+        if (file.type === "text/plain" || file.name.match(/\.txt$/i)) {
+            setUploadedFile({
+                file,
+                name: file.name,
+                size: file.size,
+                fileType: "text",
+            });
+            return;
+        }
+
+        // Check if it's an audio file
+        if (!acceptedAudioFormats.includes(file.type) && !file.name.match(/\.(mp3|wav|m4a|webm|ogg)$/i)) {
+            alert("Please upload an audio file (MP3, WAV, M4A, WebM) or text transcript (TXT)");
             return;
         }
 
@@ -59,12 +119,13 @@ export default function NewMeetingPage() {
         // Get audio duration
         const audio = new Audio(url);
         audio.addEventListener("loadedmetadata", () => {
-            setAudioFile({
+            setUploadedFile({
                 file,
                 name: file.name,
                 size: file.size,
                 duration: Math.floor(audio.duration),
                 url,
+                fileType: "audio",
             });
         });
     };
@@ -94,33 +155,63 @@ export default function NewMeetingPage() {
         const now = new Date();
         const fileName = `Recording_${now.toISOString().slice(0, 10)}_${now.toISOString().slice(11, 19).replace(/:/g, "-")}.webm`;
 
-        setAudioFile({
+        setUploadedFile({
             file: blob,
             name: fileName,
             size: blob.size,
             duration,
             url,
+            fileType: "audio",
         });
     };
 
-    const handleRemoveAudio = () => {
-        if (audioFile) {
-            URL.revokeObjectURL(audioFile.url);
+    const handleRemoveFile = () => {
+        if (uploadedFile?.url) {
+            URL.revokeObjectURL(uploadedFile.url);
         }
-        setAudioFile(null);
+        setUploadedFile(null);
     };
 
     const handleSubmit = async () => {
-        if (!audioFile) return;
+        if (!uploadedFile || !selectedProject) {
+            alert('Please select a project');
+            return;
+        }
 
         setIsProcessing(true);
 
-        // TODO: Implement actual upload and processing logic
-        // For now, simulate processing
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        try {
+            // Create FormData for file upload
+            const formData = new FormData();
+            formData.append('file', uploadedFile.file);
+            formData.append('ragStoreName', selectedProject.ragStoreName);
+            formData.append('title', title || uploadedFile.name);
+            formData.append('participants', participants);
+            formData.append('notes', notes);
+            formData.append('projectId', selectedProject.id);
+            formData.append('fileType', uploadedFile.fileType);
 
-        setIsProcessing(false);
-        // TODO: Navigate to processing/meeting detail page
+            const response = await fetch('/api/meetings/upload', {
+                method: 'POST',
+                body: formData,
+            });
+
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.error || 'Failed to upload meeting');
+            }
+
+            const data = await response.json();
+            console.log('Meeting uploaded successfully:', data);
+
+            // Navigate to meetings page
+            router.push('/meetings');
+        } catch (error) {
+            console.error('Error uploading meeting:', error);
+            alert(error instanceof Error ? error.message : 'Failed to upload meeting');
+        } finally {
+            setIsProcessing(false);
+        }
     };
 
     return (
@@ -154,52 +245,60 @@ export default function NewMeetingPage() {
                     </Button>
                 </div>
 
-                {/* Audio Input Section */}
+                {/* Audio/Text Input Section */}
                 <Card>
                     <CardHeader>
                         <CardTitle>
-                            {inputMode === "upload" ? "Upload Recording" : "Record Meeting"}
+                            {inputMode === "upload" ? "Upload Recording or Transcript" : "Record Meeting"}
                         </CardTitle>
                         <CardDescription>
                             {inputMode === "upload"
-                                ? "Upload an audio file from your meeting (MP3, WAV, M4A, or WebM)"
+                                ? "Upload an audio file (MP3, WAV, M4A, WebM) or text transcript (TXT)"
                                 : "Record your meeting directly from your browser"
                             }
                         </CardDescription>
                     </CardHeader>
                     <CardContent>
-                        {audioFile ? (
-                            /* Audio Preview */
+                        {uploadedFile ? (
+                            /* File Preview */
                             <div className="border rounded-lg p-4 bg-muted/30">
                                 <div className="flex items-center gap-4">
                                     <div className="flex size-12 items-center justify-center rounded-lg bg-primary/10">
-                                        <FileAudio className="size-6 text-primary" />
+                                        {uploadedFile.fileType === "text" ? (
+                                            <FileText className="size-6 text-primary" />
+                                        ) : (
+                                            <FileAudio className="size-6 text-primary" />
+                                        )}
                                     </div>
                                     <div className="flex-1 min-w-0">
-                                        <p className="font-medium truncate">{audioFile.name}</p>
+                                        <p className="font-medium truncate">{uploadedFile.name}</p>
                                         <p className="text-sm text-muted-foreground">
-                                            {formatFileSize(audioFile.size)} · {formatDuration(audioFile.duration)}
+                                            {formatFileSize(uploadedFile.size)}
+                                            {uploadedFile.duration && ` · ${formatDuration(uploadedFile.duration)}`}
+                                            {uploadedFile.fileType === "text" && " · Text Transcript"}
                                         </p>
                                     </div>
                                     <Button
                                         variant="ghost"
                                         size="icon"
-                                        onClick={handleRemoveAudio}
+                                        onClick={handleRemoveFile}
                                         className="text-muted-foreground hover:text-destructive"
                                     >
                                         <X className="size-4" />
                                     </Button>
                                 </div>
 
-                                {/* Audio Player */}
-                                <audio
-                                    src={audioFile.url}
-                                    controls
-                                    className="w-full mt-4 rounded"
-                                    onPlay={() => setIsPlaying(true)}
-                                    onPause={() => setIsPlaying(false)}
-                                    onEnded={() => setIsPlaying(false)}
-                                />
+                                {/* Audio Player - only show for audio files */}
+                                {uploadedFile.fileType === "audio" && uploadedFile.url && (
+                                    <audio
+                                        src={uploadedFile.url}
+                                        controls
+                                        className="w-full mt-4 rounded"
+                                        onPlay={() => setIsPlaying(true)}
+                                        onPause={() => setIsPlaying(false)}
+                                        onEnded={() => setIsPlaying(false)}
+                                    />
+                                )}
                             </div>
                         ) : inputMode === "upload" ? (
                             /* Upload Dropzone */
@@ -216,23 +315,24 @@ export default function NewMeetingPage() {
                             >
                                 <input
                                     type="file"
-                                    accept="audio/*,.mp3,.wav,.m4a,.webm,.ogg"
+                                    accept="audio/*,text/plain,.mp3,.wav,.m4a,.webm,.ogg,.txt"
                                     onChange={(e) => e.target.files?.[0] && handleFileSelect(e.target.files[0])}
                                     className="hidden"
-                                    id="audio-upload"
+                                    id="file-upload"
                                 />
-                                <label htmlFor="audio-upload" className="cursor-pointer">
+                                <label htmlFor="file-upload" className="cursor-pointer">
                                     <div className="flex size-16 items-center justify-center rounded-full bg-primary/10 mx-auto mb-4">
                                         <Upload className="size-8 text-primary" />
                                     </div>
                                     <p className="text-lg font-medium mb-1">
-                                        Drop your audio file here
+                                        Drop your file here
                                     </p>
                                     <p className="text-muted-foreground mb-4">
                                         or click to browse
                                     </p>
                                     <p className="text-sm text-muted-foreground">
-                                        Supports MP3, WAV, M4A, and WebM (max 500MB)
+                                        Audio: MP3, WAV, M4A, WebM (max 500MB)<br/>
+                                        Text: TXT transcript files
                                     </p>
                                 </label>
                             </div>
@@ -252,6 +352,58 @@ export default function NewMeetingPage() {
                         </CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-4">
+                        {/* Project Selection */}
+                        <div className="space-y-2">
+                            <label className="text-sm font-medium">
+                                Project <span className="text-destructive">*</span>
+                            </label>
+                            <div className="flex gap-2">
+                                <DropdownMenu>
+                                    <DropdownMenuTrigger asChild>
+                                        <Button variant="outline" className="w-full justify-between">
+                                            {selectedProject ? (
+                                                <span className="flex items-center gap-2">
+                                                    <FolderKanban className="size-4" />
+                                                    {selectedProject.name}
+                                                </span>
+                                            ) : (
+                                                <span className="text-muted-foreground">Select a project</span>
+                                            )}
+                                        </Button>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent align="start" className="w-[400px]">
+                                        {loadingProjects ? (
+                                            <div className="p-2 text-sm text-muted-foreground">Loading projects...</div>
+                                        ) : projects.length === 0 ? (
+                                            <div className="p-2 text-sm text-muted-foreground">No projects available</div>
+                                        ) : (
+                                            projects.map((project) => (
+                                                <DropdownMenuItem
+                                                    key={project.id}
+                                                    onClick={() => setSelectedProject(project)}
+                                                    className="flex items-center gap-2"
+                                                >
+                                                    <FolderKanban className="size-4" />
+                                                    <span>{project.name}</span>
+                                                    <span className="ml-auto text-xs text-muted-foreground">
+                                                        {project.meetingCount} meetings
+                                                    </span>
+                                                </DropdownMenuItem>
+                                            ))
+                                        )}
+                                    </DropdownMenuContent>
+                                </DropdownMenu>
+                                <Button variant="outline" size="icon" asChild>
+                                    <Link href="/projects/new">
+                                        <Plus className="size-4" />
+                                    </Link>
+                                </Button>
+                            </div>
+                            <p className="text-xs text-muted-foreground">
+                                Select an existing project or create a new one
+                            </p>
+                        </div>
+
                         <div className="space-y-2">
                             <label htmlFor="title" className="text-sm font-medium">
                                 Meeting Title
@@ -301,18 +453,18 @@ export default function NewMeetingPage() {
                     </Button>
                     <Button
                         onClick={handleSubmit}
-                        disabled={!audioFile || isProcessing}
+                        disabled={!uploadedFile || !selectedProject || isProcessing}
                         className="gap-2"
                     >
                         {isProcessing ? (
                             <>
                                 <Loader2 className="size-4 animate-spin" />
-                                Processing...
+                                Uploading...
                             </>
                         ) : (
                             <>
                                 <Upload className="size-4" />
-                                Start Transcription
+                                Upload Meeting
                             </>
                         )}
                     </Button>

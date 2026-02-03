@@ -1,9 +1,22 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Mic, FileText, Clock, CheckCircle2, AlertCircle, Upload, TrendingUp } from "lucide-react";
+import { Mic, FileText, Clock, CheckCircle2, AlertCircle, Upload, TrendingUp, FolderKanban, Plus, MessageCircleQuestion } from "lucide-react";
 import Link from "next/link";
+
+interface Project {
+    id: string;
+    name: string;
+    ragStoreName: string;
+    displayName: string;
+    createdAt: string;
+    meetings: any[];
+    meetingCount: number;
+}
 
 // Mock data for demonstration
 const recentMeetings = [
@@ -36,6 +49,30 @@ const recentMeetings = [
     },
 ];
 
+const recentProjects = [
+    {
+        id: "1",
+        name: "Project Alpha",
+        description: "Client kickoff and planning phase",
+        meetingCount: 8,
+        color: "bg-blue-500",
+    },
+    {
+        id: "2",
+        name: "Q1 Product Review",
+        description: "Quarterly product assessment",
+        meetingCount: 5,
+        color: "bg-purple-500",
+    },
+    {
+        id: "3",
+        name: "Team Standup Series",
+        description: "Regular team sync and updates",
+        meetingCount: 24,
+        color: "bg-orange-500",
+    },
+];
+
 const stats = [
     { label: "Total Meetings", value: "24", icon: Mic, change: "+3 this week" },
     { label: "Action Items", value: "47", icon: CheckCircle2, change: "12 completed" },
@@ -57,6 +94,33 @@ function getStatusBadge(status: string) {
 }
 
 export default function DashboardPage() {
+    const [projects, setProjects] = useState<Project[]>([]);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        fetchProjects();
+    }, []);
+
+    const fetchProjects = async () => {
+        try {
+            const response = await fetch('/api/projects');
+            if (response.ok) {
+                const data = await response.json();
+                setProjects(data.projects || []);
+            }
+        } catch (error) {
+            console.error('Error fetching projects:', error);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    // Get recent projects (top 3)
+    const recentProjects = projects.slice(0, 3);
+    
+    // Calculate stats from real data
+    const totalMeetings = projects.reduce((acc, p) => acc + p.meetingCount, 0);
+
     return (
         <DashboardLayout breadcrumbs={[{ label: "Dashboard" }]} title="Dashboard">
             <div className="space-y-6">
@@ -66,6 +130,12 @@ export default function DashboardPage() {
                         <Link href="/meetings/new">
                             <Upload className="size-5" />
                             Upload Recording
+                        </Link>
+                    </Button>
+                    <Button asChild size="lg" variant="outline" className="gap-2">
+                        <Link href="/projects/new">
+                            <Plus className="size-5" />
+                            Create Project
                         </Link>
                     </Button>
                     <Button asChild variant="outline" size="lg" className="gap-2">
@@ -78,26 +148,140 @@ export default function DashboardPage() {
 
                 {/* Stats Grid */}
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-                    {stats.map((stat) => (
-                        <Card key={stat.label} className="relative overflow-hidden">
-                            <CardHeader className="flex flex-row items-center justify-between pb-2">
-                                <CardTitle className="text-sm font-medium text-muted-foreground">
-                                    {stat.label}
-                                </CardTitle>
-                                <stat.icon className="size-4 text-muted-foreground" />
-                            </CardHeader>
-                            <CardContent>
-                                <div className="text-3xl font-bold">{stat.value}</div>
-                                <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
-                                    <TrendingUp className="size-3" />
-                                    {stat.change}
-                                </p>
-                            </CardContent>
-                        </Card>
-                    ))}
+                    <Card className="relative overflow-hidden">
+                        <CardHeader className="flex flex-row items-center justify-between pb-2">
+                            <CardTitle className="text-sm font-medium text-muted-foreground">
+                                Total Projects
+                            </CardTitle>
+                            <FolderKanban className="size-4 text-muted-foreground" />
+                        </CardHeader>
+                        <CardContent>
+                            <div className="text-3xl font-bold">{projects.length}</div>
+                            <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
+                                <TrendingUp className="size-3" />
+                                Active projects
+                            </p>
+                        </CardContent>
+                    </Card>
+                    <Card className="relative overflow-hidden">
+                        <CardHeader className="flex flex-row items-center justify-between pb-2">
+                            <CardTitle className="text-sm font-medium text-muted-foreground">
+                                Total Meetings
+                            </CardTitle>
+                            <Mic className="size-4 text-muted-foreground" />
+                        </CardHeader>
+                        <CardContent>
+                            <div className="text-3xl font-bold">{totalMeetings}</div>
+                            <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
+                                <TrendingUp className="size-3" />
+                                Across all projects
+                            </p>
+                        </CardContent>
+                    </Card>
+                    <Card className="relative overflow-hidden">
+                        <CardHeader className="flex flex-row items-center justify-between pb-2">
+                            <CardTitle className="text-sm font-medium text-muted-foreground">
+                                Avg Meetings
+                            </CardTitle>
+                            <FileText className="size-4 text-muted-foreground" />
+                        </CardHeader>
+                        <CardContent>
+                            <div className="text-3xl font-bold">
+                                {projects.length > 0 ? Math.round(totalMeetings / projects.length) : 0}
+                            </div>
+                            <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
+                                <TrendingUp className="size-3" />
+                                Per project
+                            </p>
+                        </CardContent>
+                    </Card>
+                    <Card className="relative overflow-hidden">
+                        <CardHeader className="flex flex-row items-center justify-between pb-2">
+                            <CardTitle className="text-sm font-medium text-muted-foreground">
+                                RAG Stores
+                            </CardTitle>
+                            <CheckCircle2 className="size-4 text-muted-foreground" />
+                        </CardHeader>
+                        <CardContent>
+                            <div className="text-3xl font-bold">{projects.length}</div>
+                            <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
+                                <TrendingUp className="size-3" />
+                                Active stores
+                            </p>
+                        </CardContent>
+                    </Card>
                 </div>
 
-                {/* Recent Meetings */}
+                {/* Recent Projects */}
+                <Card>
+                    <CardHeader>
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <CardTitle>Recent Projects</CardTitle>
+                                <CardDescription>Your active projects and their progress</CardDescription>
+                            </div>
+                            <Button variant="ghost" asChild>
+                                <Link href="/projects">View all</Link>
+                            </Button>
+                        </div>
+                    </CardHeader>
+                    <CardContent>
+                        {loading ? (
+                            <div className="text-center py-8 text-muted-foreground">
+                                Loading projects...
+                            </div>
+                        ) : recentProjects.length === 0 ? (
+                            <div className="text-center py-8">
+                                <FolderKanban className="size-12 text-muted-foreground mx-auto mb-4" />
+                                <p className="text-muted-foreground mb-4">No projects yet</p>
+                                <Button asChild>
+                                    <Link href="/projects/new">Create Your First Project</Link>
+                                </Button>
+                            </div>
+                        ) : (
+                            <div className="space-y-4">
+                                {recentProjects.map((project) => (
+                                    <div
+                                        key={project.id}
+                                        className="flex items-center justify-between p-4 rounded-lg border hover:bg-muted/50 transition-colors"
+                                    >
+                                        <Link
+                                            href={`/projects/${project.id}`}
+                                            className="flex items-center gap-4 flex-1"
+                                        >
+                                            <div className="size-10 rounded-lg bg-blue-500 flex items-center justify-center text-white">
+                                                <FolderKanban className="size-5" />
+                                            </div>
+                                            <div>
+                                                <h3 className="font-medium">{project.name}</h3>
+                                                <p className="text-sm text-muted-foreground">
+                                                    Created {new Date(project.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                                                </p>
+                                            </div>
+                                        </Link>
+                                        <div className="flex items-center gap-3">
+                                            <div className="text-right text-sm">
+                                                <p className="font-medium">{project.meetingCount} meetings</p>
+                                            </div>
+                                            <Button
+                                                size="sm"
+                                                variant="outline"
+                                                asChild
+                                            >
+                                                <Link href={`/ask?projectId=${project.id}&projectName=${encodeURIComponent(project.name)}`}>
+                                                    <MessageCircleQuestion className="size-4 mr-2" />
+                                                    Ask
+                                                </Link>
+                                            </Button>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </CardContent>
+                </Card>
+
+                {/* Recent Meetings - Using mock data for now */}
                 <Card>
                     <CardHeader>
                         <div className="flex items-center justify-between">
@@ -111,35 +295,12 @@ export default function DashboardPage() {
                         </div>
                     </CardHeader>
                     <CardContent>
-                        <div className="space-y-4">
-                            {recentMeetings.map((meeting) => (
-                                <Link
-                                    key={meeting.id}
-                                    href={`/meetings/${meeting.id}`}
-                                    className="flex items-center justify-between p-4 rounded-lg border hover:bg-muted/50 transition-colors"
-                                >
-                                    <div className="flex items-center gap-4">
-                                        <div className="flex size-10 items-center justify-center rounded-full bg-primary/10">
-                                            <Mic className="size-5 text-primary" />
-                                        </div>
-                                        <div>
-                                            <h3 className="font-medium">{meeting.title}</h3>
-                                            <p className="text-sm text-muted-foreground">
-                                                {meeting.date} · {meeting.duration}
-                                            </p>
-                                        </div>
-                                    </div>
-                                    <div className="flex items-center gap-4">
-                                        {meeting.status === "completed" && (
-                                            <div className="text-right text-sm">
-                                                <p className="font-medium">{meeting.actionItems} action items</p>
-                                                <p className="text-muted-foreground">{meeting.decisions} decisions</p>
-                                            </div>
-                                        )}
-                                        {getStatusBadge(meeting.status)}
-                                    </div>
-                                </Link>
-                            ))}
+                        <div className="text-center py-8">
+                            <Mic className="size-12 text-muted-foreground mx-auto mb-4" />
+                            <p className="text-muted-foreground mb-4">No recent meetings</p>
+                            <Button asChild>
+                                <Link href="/meetings/new">Upload Your First Meeting</Link>
+                            </Button>
                         </div>
                     </CardContent>
                 </Card>
