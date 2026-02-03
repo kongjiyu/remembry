@@ -1,0 +1,408 @@
+{
+  "id": "1769756702955-213q12a",
+  "title": "Brainstroming Meeting",
+  "participants": [
+    "Jeremy",
+    "CSTan",
+    "JY"
+  ],
+  "createdAt": "2026-01-30T07:06:55.280Z",
+  "status": "completed",
+  "transcription": {
+    "text": "怎么怎么蒙蒙的，scan不到。不是我不要scan，scan不到。CS，修好来。我正在scan着。Scan吧。你修我就scan。等下等下。CS，CS，转给Jeremy先，你的还没转完。OK，转了。你就讲我没有转。我考虑一下，考虑一下。我会着重考虑的。你要乘365啊。还要除100。哎，就是乘100除100再乘365块咯。啊真得，给我啊，给我，给我。我需要。可以可以。我Auto Debit，set up一个Auto Debit。你们刚才讨论了啥？怎么，都被... No comment. 你觉得... 我不懂要怎么process，然后我们要come out回什么东西。...不到那个东西，是类... 教user去input更多。然后跟他讲如果我们按照现在的证据的话result是什么先。So, 嗯。可能就是他自己有一点类似，就讲这个东西他证明不到，就代表是没有发生，就代表没有这个证据咯。就好像我讲我不在场。我讲我不在场，可是我证明不到，就这样代表我在场咯。类似这样的concept。没有，他会come out回如果based on现在有的东西，那个judgment会是怎样。啊类似confidence level这样。嗯... 可能是come out回一个而已，就是like按照现在的这些证据，可能是这个，这个judgment。然后除非user有新的证据，这样子可能才更换。哦，我们的... of course我们show的东西肯定是一个case type。我们也只需要focus on一个啦。就防止纠纷这样的东西。啊我们可以... 我们可以assume我们只做一个。Does the team use measurable goals to demonstrate the impact of their solution? 是啊。在我的家庭里面，我跟舅舅是辈分最小，再小就是下一辈了。下一辈的都不怎么认识。同辈我也是最小的。接近。陈也是啊，同辈最大。我同辈最小，其他的，我的同辈的全部都是做工了的，结婚了的。这些都有孩子了，被叫舅舅什么的。这个idea感觉很难搞。你们对于这个idea的想法是什么？你们觉得可以搞吗？对，它很复杂。它没有一个很明确的标准。很多东西是很... 它的range很大。所以其实就算是很小的案件，它的证据也是很多。我刚才叫AI推荐题目给我。看到一个跟中国最近很著名的App很像。最近中国很著名的App叫《死了吗》。他叫... 他讲叫那些老人每天check-in，每天check他的健康，然后如果有可能有危险的话会detect。然后如果一直没有check-in的话就代表有问题。蛮离谱。我也这样觉得。我们还是看一下有什么新题目。我刚才有看到几个可是我不懂这个东西对于Hackathon来讲OK不OK。第一个是叫... 帮端那。它就是有一点像是，因为有些人不懂他到底是不是qualify for某些那种福利。So可以叫AI来去帮他analyze去帮他找他可以for what。但我我不确定跟这个Hackathon是不适合在这个Hackathon。我觉得这个idea不错。它负责去匹配哦。它负责拿你的状况，比如讲它这里是讲用chatbot的形式跟你拿info啦。然后拿info过后他帮你跟你讲哦可能你eligible for这个这个这个。这些东西。但我觉这个东西很小，然后跟AI没有太大关系。这是在淹水的时候用的吧？这个我觉得很抽象。有什么？这个我觉得比较难个人不看好这个看起来也不咋地。是咯。这个看起来没有什么用。这个东西我蛮感兴趣的，但它也不是很有AI。它这里把AI是放在coordinate那个位置。But它这个food waste的概念，就是like那些商家，如果它有多余的食物，它可以在这个App上面讲它有多余的食物。So那些NGO可以去跟他拿。我觉得这个概念很好，但我觉跟AI也没有太大关系。它这里AI的定位是关于... turn free text into structured data. 然后auto message templates. 没有什么用。对，跟AI没有太大关系。但我觉它这个概念很不错。是。其它的好像不咋地。啊，这个也不错。Scam... 哦，我想到了。这个东西哦，上次好像有一个... 不是，我们在学AI那个课程的时候，好像有一些题目是关于到detect那个text的东西的。Peer review? 嘿，我跟你老师不一样。反正就是这个可以用machine learning做到。感觉上。但跟AI也没有太大关系。这个这个也不咋地，什么电力怎样省电。Google translate没有用。仓谷。就是讲怎样省钱。他要怎样去管理他的钱之类的。太多钱。哇，你吃一口就知道有没有啊。你是天才啊。哦，有一个东西那个叫什么。可以做一个like看contract的AI。可以考虑。但上次有一次我丢给他，就我没有拿到我要的东西。就代表你的System Prompt那里还是需要handle。我记得我那时候也是一个保险的合约，我丢给他，然后叫他解释之类的。他解释到不是很好，上次的时候。反正最后我是没有去他写的东西。我也不知道我们要分析要分析成怎样。怎么，Jeremy？No idea. 等一下。这个infopage一定是有。等一下我找一下。我pin一下那个link。Pin了。Timeline在那个docs里面。这里。对，5月28号。这是什么？MVP prototype? Prototype. 对，28号过后吧，甚至更迟。9号，它9号公布finalist. Refine是它会给你建议，讲可能什么东西可以改，然后过后才final map。怎么全部足球。最近有什么足球比赛啊？B组。Man Utd VS Man City. 这什么渣拉？237个。Man Utd VS Man City. 这什么渣拉？Sara? 钱。Stone Cold, Sara. 上次因为他其中一个... 停在路中间。他停在路中间，然后那个人honk他叫他走去旁边。怕撞到他。最他顶。他停在前面不要给他走。屌，金融。我还没有决定。我也是。Gold Price Forecast 2020. 我等他一下看有没有新的。哟，这边打工人。耶，真棒。真棒。给啦，等下再看啦，如果有什么题目再丢进group里面啦。给啦，Bye Bye Bye Bye.",
+    "segments": [
+      {
+        "speaker": "CSTan",
+        "text": "怎么怎么蒙蒙的，scan不到。不是我不要scan，scan不到。",
+        "startTime": 0,
+        "endTime": 12
+      },
+      {
+        "speaker": "Jeremy",
+        "text": "CS，修好来。我正在scan着。",
+        "startTime": 15,
+        "endTime": 22
+      },
+      {
+        "speaker": "CSTan",
+        "text": "Scan吧。",
+        "startTime": 24,
+        "endTime": 28
+      },
+      {
+        "speaker": "Jeremy",
+        "text": "你修我就scan。",
+        "startTime": 31,
+        "endTime": 45
+      },
+      {
+        "speaker": "Jeremy",
+        "text": "等下等下。CS，CS，转给Jeremy先，你的还没转完。",
+        "startTime": 49,
+        "endTime": 58
+      },
+      {
+        "speaker": "CSTan",
+        "text": "OK，转了。",
+        "startTime": 59,
+        "endTime": 62
+      },
+      {
+        "speaker": "Jeremy",
+        "text": "你就讲我没有转。",
+        "startTime": 64,
+        "endTime": 75
+      },
+      {
+        "speaker": "CSTan",
+        "text": "我考虑一下，考虑一下。我会着重考虑的。你要乘365啊。还要除100。哎，就是乘100除100再乘365块咯。啊真得，给我啊，给我，给我。我需要。可以可以。我Auto Debit，set up一个Auto Debit。",
+        "startTime": 76,
+        "endTime": 120
+      },
+      {
+        "speaker": "JY",
+        "text": "你们刚才讨论了啥？",
+        "startTime": 121,
+        "endTime": 125
+      },
+      {
+        "speaker": "Jeremy",
+        "text": "怎么，都被...",
+        "startTime": 126,
+        "endTime": 132
+      },
+      {
+        "speaker": "CSTan",
+        "text": "No comment. 你觉得... 我不懂要怎么process，然后我们要come out回什么东西。",
+        "startTime": 133,
+        "endTime": 178
+      },
+      {
+        "speaker": "Jeremy",
+        "text": "...不到那个东西，是类...",
+        "startTime": 180,
+        "endTime": 235
+      },
+      {
+        "speaker": "CSTan",
+        "text": "教user去input更多。然后跟他讲如果我们按照现在的证据的话result是什么先。So, 嗯。可能就是他自己有一点类似，就讲这个东西他证明不到，就代表是没有发生，就代表没有这个证据咯。就好像我讲我不在场。我讲我不在场，可是我证明不到，就这样代表我在场咯。类似这样的concept。",
+        "startTime": 240,
+        "endTime": 300
+      },
+      {
+        "speaker": "Jeremy",
+        "text": "没有，他会come out回如果based on现在有的东西，那个judgment会是怎样。啊类似confidence level这样。",
+        "startTime": 302,
+        "endTime": 335
+      },
+      {
+        "speaker": "CSTan",
+        "text": "嗯... 可能是come out回一个而已，就是like按照现在的这些证据，可能是这个，这个judgment。然后除非user有新的证据，这样子可能才更换。",
+        "startTime": 339,
+        "endTime": 372
+      },
+      {
+        "speaker": "Jeremy",
+        "text": "哦，我们的... of course我们show的东西肯定是一个case type。我们也只需要focus on一个啦。就防止纠纷这样的东西。啊我们可以... 我们可以assume我们只做一个。",
+        "startTime": 374,
+        "endTime": 405
+      },
+      {
+        "speaker": "JY",
+        "text": "Does the team use measurable goals to demonstrate the impact of their solution?",
+        "startTime": 564,
+        "endTime": 571
+      },
+      {
+        "speaker": "CSTan",
+        "text": "是啊。在我的家庭里面，我跟舅舅是辈分最小，再小就是下一辈了。下一辈的都不怎么认识。同辈我也是最小的。接近。陈也是啊，同辈最大。我同辈最小，其他的，我的同辈的全部都是做工了的，结婚了的。这些都有孩子了，被叫舅舅什么的。",
+        "startTime": 673,
+        "endTime": 725
+      },
+      {
+        "speaker": "Jeremy",
+        "text": "这个idea感觉很难搞。",
+        "startTime": 751,
+        "endTime": 760
+      },
+      {
+        "speaker": "CSTan",
+        "text": "你们对于这个idea的想法是什么？你们觉得可以搞吗？",
+        "startTime": 764,
+        "endTime": 776
+      },
+      {
+        "speaker": "CSTan",
+        "text": "对，它很复杂。它没有一个很明确的标准。很多东西是很... 它的range很大。",
+        "startTime": 783,
+        "endTime": 810
+      },
+      {
+        "speaker": "CSTan",
+        "text": "所以其实就算是很小的案件，它的证据也是很多。",
+        "startTime": 866,
+        "endTime": 875
+      },
+      {
+        "speaker": "CSTan",
+        "text": "我刚才叫AI推荐题目给我。看到一个跟中国最近很著名的App很像。最近中国很著名的App叫《死了吗》。",
+        "startTime": 1087,
+        "endTime": 1115
+      },
+      {
+        "speaker": "CSTan",
+        "text": "他叫... 他讲叫那些老人每天check-in，每天check his health，然后如果有可能有危险的话会detect。然后如果一直没有check-in的话就代表有问题。",
+        "startTime": 1123,
+        "endTime": 1140
+      },
+      {
+        "speaker": "CSTan",
+        "text": "蛮离谱。我也这样觉得。我们还是看一下有什么新题目。",
+        "startTime": 1145,
+        "endTime": 1160
+      },
+      {
+        "speaker": "CSTan",
+        "text": "我刚才有看到几个可是我不懂这个东西对于Hackathon来讲OK不OK。第一个是叫... 帮端那。它就是有一点像是，因为有些人不懂他到底是不是qualify for某些那种福利。So可以叫AI来去帮他analyze去帮他找他可以for something。但我我不确定跟这个Hackathon是不适合在这个Hackathon。我觉得这个idea不错。",
+        "startTime": 1170,
+        "endTime": 1211
+      },
+      {
+        "speaker": "Jeremy",
+        "text": "它负责去匹配哦。它负责拿你的状况，比如讲它这里是讲用chatbot的形式跟你拿info啦。然后拿info过后他帮你跟你讲哦可能你eligible for这个这个这个。这些东西。但我觉这个东西很小，然后跟AI没有太大关系。",
+        "startTime": 1214,
+        "endTime": 1245
+      },
+      {
+        "speaker": "CSTan",
+        "text": "这是在淹水的时候用的吧？这个我觉得很抽象。有什么？这个我觉得比较难个人不看好这个看起来也不咋地。",
+        "startTime": 1275,
+        "endTime": 1315
+      },
+      {
+        "speaker": "CSTan",
+        "text": "是咯。这个看起来没有什么用。这个东西我蛮感兴趣的，但它也不是很有AI。它这里把AI是放在coordinate那个位置。But它这个food waste的概念，就是like那些商家，如果它有多余的食物，它可以在这个App上面讲它有多余的食物。So那些NGO可以去跟他拿。我觉得这个概念很好，但我觉跟AI也没有太大关系。",
+        "startTime": 1318,
+        "endTime": 1350
+      },
+      {
+        "speaker": "CSTan",
+        "text": "它这里AI的定位是关于... turn free text into structured data. 然后auto message templates. 没有什么用。",
+        "startTime": 1351,
+        "endTime": 1365
+      },
+      {
+        "speaker": "CSTan",
+        "text": "对，跟AI没有太大关系。但我觉它这个概念很不错。是。其它的好像不咋地。",
+        "startTime": 1368,
+        "endTime": 1385
+      },
+      {
+        "speaker": "CSTan",
+        "text": "啊，这个也不错。Scam...",
+        "startTime": 1387,
+        "endTime": 1395
+      },
+      {
+        "speaker": "Jeremy",
+        "text": "哦，我想到了。这个东西哦，上次好像有一个... 不是，我们在学AI那个课程的时候，好像有一些题目是关于到detect那个text的东西的。",
+        "startTime": 1431,
+        "endTime": 1448
+      },
+      {
+        "speaker": "Jeremy",
+        "text": "Peer review?",
+        "startTime": 1450,
+        "endTime": 1452
+      },
+      {
+        "speaker": "Jeremy",
+        "text": "嘿，我跟你老师不一样。反正就是这个可以用machine learning做到。感觉上。但跟AI也没有太大关系。",
+        "startTime": 1466,
+        "endTime": 1480
+      },
+      {
+        "speaker": "CSTan",
+        "text": "这个这个也不咋地，什么电力怎样省电。Google translate没有用。仓谷。",
+        "startTime": 1481,
+        "endTime": 1496
+      },
+      {
+        "speaker": "CSTan",
+        "text": "就是讲怎样省钱。他要怎样去管理他的钱之类的。",
+        "startTime": 1498,
+        "endTime": 1509
+      },
+      {
+        "speaker": "CSTan",
+        "text": "太多钱。",
+        "startTime": 1512,
+        "endTime": 1515
+      },
+      {
+        "speaker": "CSTan",
+        "text": "哇，你吃一口就知道有没有啊。你是天才啊。",
+        "startTime": 1599,
+        "endTime": 1605
+      },
+      {
+        "speaker": "CSTan",
+        "text": "哦，有一个东西那个叫什么。可以做一个like看contract的AI。",
+        "startTime": 1615,
+        "endTime": 1626
+      },
+      {
+        "speaker": "CSTan",
+        "text": "可以考虑。",
+        "startTime": 1629,
+        "endTime": 1632
+      },
+      {
+        "speaker": "CSTan",
+        "text": "但上次有一次我丢给他，就我没有拿到我要的东西。就代表你的System Prompt那里还是需要handle。我记得我那时候也是一个保险的合约，我丢给他，然后叫他解释之类的。他解释到不是很好，上次的时候。反正最后我是没有去他写的东西。",
+        "startTime": 1649,
+        "endTime": 1672
+      },
+      {
+        "speaker": "CSTan",
+        "text": "我也不知道我们要分析要分析成怎样。怎么，Jeremy？",
+        "startTime": 1673,
+        "endTime": 1682
+      },
+      {
+        "speaker": "CSTan",
+        "text": "No idea.",
+        "startTime": 1696,
+        "endTime": 1698
+      },
+      {
+        "speaker": "CSTan",
+        "text": "等一下。这个infopage一定是有. 等一下我找一下。我pin一下那个link。Pin了。Timeline在那个docs里面。这里。",
+        "startTime": 1922,
+        "endTime": 1950
+      },
+      {
+        "speaker": "CSTan",
+        "text": "对，5月28号。这是什么？MVP prototype? Prototype.",
+        "startTime": 1968,
+        "endTime": 1982
+      },
+      {
+        "speaker": "Jeremy",
+        "text": "对，28号过后吧，甚至更迟。",
+        "startTime": 2003,
+        "endTime": 2011
+      },
+      {
+        "speaker": "CSTan",
+        "text": "9号，它9号公布finalist.",
+        "startTime": 2018,
+        "endTime": 2024
+      },
+      {
+        "speaker": "Jeremy",
+        "text": "Refine是它会给你建议，讲可能什么东西可以改，然后过后才final map。",
+        "startTime": 2032,
+        "endTime": 2043
+      },
+      {
+        "speaker": "CSTan",
+        "text": "怎么全部足球。最近有什么足球比赛啊？B组。",
+        "startTime": 2055,
+        "endTime": 2072
+      },
+      {
+        "speaker": "Jeremy",
+        "text": "Man Utd VS Man City. 这什么渣拉？",
+        "startTime": 2108,
+        "endTime": 2117
+      },
+      {
+        "speaker": "CSTan",
+        "text": "237个。",
+        "startTime": 2128,
+        "endTime": 2132
+      },
+      {
+        "speaker": "Jeremy",
+        "text": "Man Utd VS Man City. 这什么渣拉？",
+        "startTime": 2132,
+        "endTime": 2141
+      },
+      {
+        "speaker": "CSTan",
+        "text": "Sara?",
+        "startTime": 2166,
+        "endTime": 2169
+      },
+      {
+        "speaker": "CSTan",
+        "text": "钱。Stone Cold, Sara.",
+        "startTime": 2174,
+        "endTime": 2182
+      },
+      {
+        "speaker": "CSTan",
+        "text": "上次因为他其中一个... 停在路中间。他停在路中间，然后那个人honk他叫他走去旁边。怕撞到他。最他顶。他停在前面不要给他走。",
+        "startTime": 2183,
+        "endTime": 2212
+      },
+      {
+        "speaker": "Jeremy",
+        "text": "屌，金融。",
+        "startTime": 2223,
+        "endTime": 2227
+      },
+      {
+        "speaker": "CSTan",
+        "text": "我还没有决定。",
+        "startTime": 2225,
+        "endTime": 2228
+      },
+      {
+        "speaker": "Jeremy",
+        "text": "我也是。",
+        "startTime": 2266,
+        "endTime": 2268
+      },
+      {
+        "speaker": "CSTan",
+        "text": "Gold Price Forecast 2020.",
+        "startTime": 2266,
+        "endTime": 2272
+      },
+      {
+        "speaker": "CSTan",
+        "text": "我等他一下看有没有新的。",
+        "startTime": 2278,
+        "endTime": 2283
+      },
+      {
+        "speaker": "CSTan",
+        "text": "哟，这边打工人。",
+        "startTime": 2483,
+        "endTime": 2488
+      },
+      {
+        "speaker": "Jeremy",
+        "text": "耶，真棒。真棒。",
+        "startTime": 2772,
+        "endTime": 2778
+      },
+      {
+        "speaker": "Jeremy",
+        "text": "给啦，等下再看啦，如果有什么题目再丢进group里面啦。给啦，Bye Bye Bye Bye.",
+        "startTime": 2778,
+        "endTime": 2792
+      }
+    ],
+    "speakers": [
+      "Jeremy",
+      "CSTan",
+      "JY"
+    ],
+    "duration": 0,
+    "language": "zh"
+  },
+  "audioPath": "uploads/1769756702955-213q12a/audio.mp3"
+}

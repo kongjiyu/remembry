@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -16,7 +17,7 @@ import {
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 
 interface Project {
     id: string;
@@ -61,10 +62,10 @@ export default function NewMeetingPage() {
     const [isPlaying, setIsPlaying] = useState(false);
     const [isDragging, setIsDragging] = useState(false);
     const [isProcessing, setIsProcessing] = useState(false);
+    const [processingStatus, setProcessingStatus] = useState<string>("");
 
     // Form state
     const [title, setTitle] = useState("");
-    const [participants, setParticipants] = useState("");
     const [notes, setNotes] = useState("");
     
     // Project selection
@@ -110,7 +111,7 @@ export default function NewMeetingPage() {
 
         // Check if it's an audio file
         if (!acceptedAudioFormats.includes(file.type) && !file.name.match(/\.(mp3|wav|m4a|webm|ogg)$/i)) {
-            alert("Please upload an audio file (MP3, WAV, M4A, WebM) or text transcript (TXT)");
+            toast.error("Please upload an audio file (MP3, WAV, M4A, WebM) or text transcript (TXT)");
             return;
         }
 
@@ -174,11 +175,12 @@ export default function NewMeetingPage() {
 
     const handleSubmit = async () => {
         if (!uploadedFile || !selectedProject) {
-            alert('Please select a project');
+            toast.error('Please select a project');
             return;
         }
 
         setIsProcessing(true);
+        setProcessingStatus("Preparing file...");
 
         try {
             // Create FormData for file upload
@@ -186,10 +188,13 @@ export default function NewMeetingPage() {
             formData.append('file', uploadedFile.file);
             formData.append('ragStoreName', selectedProject.ragStoreName);
             formData.append('title', title || uploadedFile.name);
-            formData.append('participants', participants);
+            // Removed participants as requested in the new feature
             formData.append('notes', notes);
             formData.append('projectId', selectedProject.id);
             formData.append('fileType', uploadedFile.fileType);
+            if (uploadedFile.duration) {
+                formData.append('duration', uploadedFile.duration.toString());
+            }
 
             const response = await fetch('/api/meetings/upload', {
                 method: 'POST',
@@ -203,12 +208,18 @@ export default function NewMeetingPage() {
 
             const data = await response.json();
             console.log('Meeting uploaded successfully:', data);
+            
+            toast.success("Meeting uploaded successfully!");
 
-            // Navigate to meetings page
-            router.push('/meetings');
+            // Navigate to meeting detail page if ID exists, otherwise meetings list
+            if (data.meetingId) {
+                router.push(`/meetings/${data.meetingId}`);
+            } else {
+                router.push('/meetings');
+            }
         } catch (error) {
             console.error('Error uploading meeting:', error);
-            alert(error instanceof Error ? error.message : 'Failed to upload meeting');
+            toast.error(error instanceof Error ? error.message : 'Failed to upload meeting');
         } finally {
             setIsProcessing(false);
         }
@@ -414,21 +425,6 @@ export default function NewMeetingPage() {
                                 value={title}
                                 onChange={(e) => setTitle(e.target.value)}
                             />
-                        </div>
-
-                        <div className="space-y-2">
-                            <label htmlFor="participants" className="text-sm font-medium">
-                                Participants
-                            </label>
-                            <Input
-                                id="participants"
-                                placeholder="e.g., John, Sarah, Mike"
-                                value={participants}
-                                onChange={(e) => setParticipants(e.target.value)}
-                            />
-                            <p className="text-xs text-muted-foreground">
-                                Separate names with commas for speaker identification
-                            </p>
                         </div>
 
                         <div className="space-y-2">

@@ -1,0 +1,115 @@
+{
+  "id": "1769756438200-rmwmtg0",
+  "title": "Meeting 1/30/2026",
+  "participants": [],
+  "createdAt": "2026-01-30T07:01:00.567Z",
+  "status": "completed",
+  "transcription": {
+    "text": "嗯，我明白，我明白你要表達的東西。聽到聽到。真的嗎？我嘴巴有延遲？嘴巴有延遲是什麼啦？哈囉，哈囉，哈囉，1 2 3 4 5。可能我剛剛卡了。我上次 CS ping 多少？20，30？你也是剛剛卡啦。再思考一下，再思考一下。他幾時回來中國啊？Brother, brother, 喲, brother. GG 啦 CS, GG。理解理解。哇，我電腦很卡喔。等下，我重開電腦一下，我電腦太多東西了。",
+    "segments": [
+      {
+        "speaker": "Speaker 1",
+        "text": "嗯，我明白，我明白你要表達的東西。",
+        "startTime": 0,
+        "endTime": 6
+      },
+      {
+        "speaker": "Speaker 1",
+        "text": "聽到聽到。",
+        "startTime": 12,
+        "endTime": 14.5
+      },
+      {
+        "speaker": "Speaker 1",
+        "text": "真的嗎？",
+        "startTime": 17.5,
+        "endTime": 19
+      },
+      {
+        "speaker": "Speaker 1",
+        "text": "我嘴巴有延遲？",
+        "startTime": 28.5,
+        "endTime": 30.5
+      },
+      {
+        "speaker": "Speaker 1",
+        "text": "嘴巴有延遲是什麼啦？",
+        "startTime": 31,
+        "endTime": 34
+      },
+      {
+        "speaker": "Speaker 1",
+        "text": "哈囉，哈囉，哈囉，1 2 3 4 5。",
+        "startTime": 47,
+        "endTime": 53
+      },
+      {
+        "speaker": "Speaker 1",
+        "text": "可能我剛剛卡了。",
+        "startTime": 104,
+        "endTime": 107
+      },
+      {
+        "speaker": "Speaker 1",
+        "text": "我上次 CS ping 多少？20，30？",
+        "startTime": 117,
+        "endTime": 122.5
+      },
+      {
+        "speaker": "Speaker 2",
+        "text": "你也是剛剛卡啦。",
+        "startTime": 123,
+        "endTime": 126
+      },
+      {
+        "speaker": "Speaker 1",
+        "text": "再思考一下，再思考一下。",
+        "startTime": 133,
+        "endTime": 136.5
+      },
+      {
+        "speaker": "Speaker 1",
+        "text": "他幾時回來中國啊？",
+        "startTime": 149,
+        "endTime": 152.5
+      },
+      {
+        "speaker": "Speaker 1",
+        "text": "Brother, brother, 喲, brother.",
+        "startTime": 153,
+        "endTime": 159.5
+      },
+      {
+        "speaker": "Speaker 1",
+        "text": "GG 啦 CS, GG。",
+        "startTime": 205,
+        "endTime": 209.5
+      },
+      {
+        "speaker": "Speaker 2",
+        "text": "理解理解。",
+        "startTime": 219,
+        "endTime": 222
+      },
+      {
+        "speaker": "Speaker 1",
+        "text": "哇，我電腦很卡喔。",
+        "startTime": 232,
+        "endTime": 235.5
+      },
+      {
+        "speaker": "Speaker 1",
+        "text": "等下，我重開電腦一下，我電腦太多東西了。",
+        "startTime": 242,
+        "endTime": 251
+      }
+    ],
+    "speakers": [
+      "Speaker 1",
+      "Speaker 2"
+    ],
+    "duration": 0,
+    "language": "zh"
+  },
+  "audioPath": "uploads/1769756438200-rmwmtg0/audio.mp3"
+}

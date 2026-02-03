@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { Card } from "@/components/ui/card";
@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Send, Sparkles, FileText } from "lucide-react";
+import { Send, Sparkles, FileText, Loader2 } from "lucide-react";
 import Link from "next/link";
 
 interface GroundingChunk {
@@ -25,7 +25,7 @@ interface Message {
     groundingChunks?: GroundingChunk[];
 }
 
-export default function AskQuestionPage() {
+function AskQuestionContent() {
     const searchParams = useSearchParams();
     const [projectId, setProjectId] = useState<string | null>(null);
     const [projectName, setProjectName] = useState<string | null>(null);
@@ -45,6 +45,8 @@ export default function AskQuestionPage() {
         setProjectId(projectIdParam);
         setProjectName(projectNameParam);
     }, [searchParams]);
+
+    // ... (rest of the component logic remains exactly the same until return)
 
     // Load example questions
     useEffect(() => {
@@ -357,5 +359,19 @@ export default function AskQuestionPage() {
                 </DialogContent>
             </Dialog>
         </DashboardLayout>
+    );
+}
+
+export default function AskQuestionPage() {
+    return (
+        <Suspense fallback={
+            <DashboardLayout breadcrumbs={[{ label: "Ask Questions" }]} title="Ask Questions">
+                <div className="flex items-center justify-center h-full">
+                    <Loader2 className="size-8 animate-spin text-muted-foreground" />
+                </div>
+            </DashboardLayout>
+        }>
+            <AskQuestionContent />
+        </Suspense>
     );
 }

@@ -145,6 +145,7 @@ export function AppSidebar() {
                                 <SidebarMenuButton
                                     size="lg"
                                     className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
+                                    suppressHydrationWarning
                                 >
                                     <Avatar className="size-8">
                                         <AvatarImage src="" alt="User avatar" />
