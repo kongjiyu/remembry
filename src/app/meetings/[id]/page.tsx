@@ -66,25 +66,58 @@ interface MeetingData {
 }
 
 async function getMeetingData(id: string): Promise<MeetingData | null> {
+    console.log(`[getMeetingData] Retrieving meeting (raw): ${id}`);
+    
+    // Decode URL-encoded ID (e.g., %2F -> /)
+    const decodedId = decodeURIComponent(id);
+    console.log(`[getMeetingData] Decoded ID: ${decodedId}`);
+    
     // Try exact match first (local folder)
-    let folderId = id;
+    let folderId = decodedId;
     let transcriptionPath = path.join(process.cwd(), "uploads", folderId, "transcription.json");
     
     // If exact match doesn't exist, try removing extension (e.g. if ID is "123.mp3", look for folder "123")
     if (!existsSync(transcriptionPath)) {
+        console.log(`[Strategy A] Exact match not found: ${transcriptionPath}`);
+        
         const idWithoutExt = path.parse(id).name;
         const altPath = path.join(process.cwd(), "uploads", idWithoutExt, "transcription.json");
         if (existsSync(altPath)) {
+            console.log(`[Strategy B] ✓ Found with normalized filename: ${idWithoutExt}`);
             folderId = idWithoutExt;
             transcriptionPath = altPath;
         } else {
+            console.log(`[Strategy B] Normalized filename not found: ${altPath}`);
+            
             // Fallback: Try fetching from RAG store
+            console.log(`[Strategy C] Attempting RAG store retrieval...`);
             try {
-                const analysis = await analyzeMeeting(id);
+                const analysis = await analyzeMeeting(decodedId);
                 if (analysis) {
+                    console.log(`[Strategy C] ✓ Successfully retrieved from RAG store`);
+                    
+                    // Check if we have a meetingId in customMetadata that points to local storage
+                    const localMeetingId = analysis.metadata.customMetadata?.find(
+                        (m: any) => m.key === 'meetingId'
+                    )?.stringValue;
+                    
+                    if (localMeetingId) {
+                        console.log(`[Strategy C] Found local meetingId in metadata: ${localMeetingId}`);
+                        const localPath = path.join(process.cwd(), "uploads", localMeetingId, "transcription.json");
+                        
+                        if (existsSync(localPath)) {
+                            console.log(`[Strategy C] ✓ Redirecting to local storage: ${localMeetingId}`);
+                            // Recursively call with the local ID to get full data
+                            return getMeetingData(localMeetingId);
+                        } else {
+                            console.log(`[Strategy C] Local file not found, using RAG data only`);
+                        }
+                    }
+                    
+                    // If no local data, return RAG-only data
                     return {
-                        id: id,
-                        title: analysis.metadata.displayName || id,
+                        id: decodedId,
+                        title: analysis.metadata.displayName || decodedId,
                         participants: [],
                         createdAt: analysis.metadata.createTime || new Date().toISOString(),
                         status: "completed",
@@ -106,11 +139,15 @@ async function getMeetingData(id: string): Promise<MeetingData | null> {
                         }
                     };
                 }
+                console.log(`[Strategy C] RAG store returned no data`);
             } catch (e) {
-                console.error("Failed to fetch from RAG:", e);
+                console.error("[Strategy C] ✗ Failed to fetch from RAG:", e);
             }
+            console.log(`[getMeetingData] All strategies failed - meeting not found`);
             return null;
         }
+    } else {
+        console.log(`[Strategy A] ✓ Found exact match: ${transcriptionPath}`);
     }
 
     const notesPath = path.join(process.cwd(), "uploads", folderId, "notes.json");
@@ -122,6 +159,9 @@ async function getMeetingData(id: string): Promise<MeetingData | null> {
         if (existsSync(notesPath)) {
             const notesData = await readFile(notesPath, "utf-8");
             meeting.notes = JSON.parse(notesData);
+            console.log(`[getMeetingData] ✓ Loaded notes from: ${notesPath}`);
+        } else {
+            console.log(`[getMeetingData] No notes file found (optional)`);
         }
 
         return meeting;

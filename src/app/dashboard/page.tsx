@@ -116,10 +116,27 @@ export default function DashboardPage() {
     };
 
     // Get recent projects (top 3)
-    const recentProjects = projects.slice(0, 3);
+    const recentProjectsList = projects.slice(0, 3);
     
     // Calculate stats from real data
     const totalMeetings = projects.reduce((acc, p) => acc + p.meetingCount, 0);
+
+    // Get recent meetings across all projects (last 5)
+    const recentMeetingsList = projects
+        .flatMap(project => 
+            (project.meetings || []).map((meeting: any) => ({
+                ...meeting,
+                projectId: project.id,
+                projectName: project.name
+            }))
+        )
+        .filter((meeting: any) => !meeting.displayName?.startsWith('project-'))
+        .sort((a: any, b: any) => {
+            const timeA = new Date(a.uploadTime || 0).getTime();
+            const timeB = new Date(b.uploadTime || 0).getTime();
+            return timeB - timeA;
+        })
+        .slice(0, 5);
 
     return (
         <DashboardLayout breadcrumbs={[{ label: "Dashboard" }]} title="Dashboard">
@@ -230,7 +247,7 @@ export default function DashboardPage() {
                             <div className="text-center py-8 text-muted-foreground">
                                 Loading projects...
                             </div>
-                        ) : recentProjects.length === 0 ? (
+                        ) : recentProjectsList.length === 0 ? (
                             <div className="text-center py-8">
                                 <FolderKanban className="size-12 text-muted-foreground mx-auto mb-4" />
                                 <p className="text-muted-foreground mb-4">No projects yet</p>
@@ -240,7 +257,7 @@ export default function DashboardPage() {
                             </div>
                         ) : (
                             <div className="space-y-4">
-                                {recentProjects.map((project) => (
+                                {recentProjectsList.map((project) => (
                                     <div
                                         key={project.id}
                                         className="flex items-center justify-between p-4 rounded-lg border hover:bg-muted/50 transition-colors"
@@ -281,7 +298,7 @@ export default function DashboardPage() {
                     </CardContent>
                 </Card>
 
-                {/* Recent Meetings - Using mock data for now */}
+                {/* Recent Meetings */}
                 <Card>
                     <CardHeader>
                         <div className="flex items-center justify-between">
@@ -295,13 +312,54 @@ export default function DashboardPage() {
                         </div>
                     </CardHeader>
                     <CardContent>
-                        <div className="text-center py-8">
-                            <Mic className="size-12 text-muted-foreground mx-auto mb-4" />
-                            <p className="text-muted-foreground mb-4">No recent meetings</p>
-                            <Button asChild>
-                                <Link href="/meetings/new">Upload Your First Meeting</Link>
-                            </Button>
-                        </div>
+                        {loading ? (
+                            <div className="text-center py-8 text-muted-foreground">
+                                Loading meetings...
+                            </div>
+                        ) : recentMeetingsList.length === 0 ? (
+                            <div className="text-center py-8">
+                                <Mic className="size-12 text-muted-foreground mx-auto mb-4" />
+                                <p className="text-muted-foreground mb-4">No recent meetings</p>
+                                <Button asChild>
+                                    <Link href="/meetings/new">Upload Your First Meeting</Link>
+                                </Button>
+                            </div>
+                        ) : (
+                            <div className="space-y-4">
+                                {recentMeetingsList.map((meeting: any) => {
+                                    const encodedDocName = encodeURIComponent(meeting.name);
+                                    const uploadDate = meeting.uploadTime 
+                                        ? new Date(meeting.uploadTime).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                                        : 'Unknown date';
+                                    
+                                    return (
+                                        <div
+                                            key={meeting.name}
+                                            className="flex items-center justify-between p-4 rounded-lg border hover:bg-muted/50 transition-colors"
+                                        >
+                                            <Link
+                                                href={`/meetings/${encodedDocName}?projectId=${meeting.projectId}&projectName=${encodeURIComponent(meeting.projectName)}`}
+                                                className="flex items-center gap-4 flex-1"
+                                            >
+                                                <div className="size-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                                                    <Mic className="size-5 text-primary" />
+                                                </div>
+                                                <div>
+                                                    <h3 className="font-medium">{meeting.displayName || meeting.name}</h3>
+                                                    <p className="text-sm text-muted-foreground">
+                                                        {meeting.projectName} • {uploadDate}
+                                                    </p>
+                                                </div>
+                                            </Link>
+                                            <Badge className="bg-success/10 text-success border-success/20">
+                                                <CheckCircle2 className="size-3 mr-1" />
+                                                Synced
+                                            </Badge>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
                     </CardContent>
                 </Card>
 

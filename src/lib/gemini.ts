@@ -59,17 +59,25 @@ async function retryWithBackoff<T>(
                                   errorMessage.includes("RESOURCE_EXHAUSTED") ||
                                   errorMessage.includes("quota");
             
-            if (!isRateLimited || attempt === maxRetries) {
+            // Check if it's a network error
+            const isNetworkError = errorMessage.includes("fetch failed") ||
+                                   errorMessage.includes("ECONNREFUSED") ||
+                                   errorMessage.includes("ETIMEDOUT") ||
+                                   errorMessage.includes("network");
+            
+            // Retry on network errors or rate limits
+            if ((isRateLimited || isNetworkError) && attempt < maxRetries) {
+                // Extract retry delay from error if available
+                const retryMatch = errorMessage.match(/retry in (\d+(?:\.\d+)?)/i);
+                const suggestedDelay = retryMatch ? parseFloat(retryMatch[1]) * 1000 : null;
+                
+                const delay = suggestedDelay || (initialDelay * Math.pow(2, attempt));
+                const reason = isRateLimited ? "Rate limited" : "Network error";
+                console.log(`${reason}. Retrying in ${Math.round(delay / 1000)}s (attempt ${attempt + 1}/${maxRetries})...`);
+                await sleep(delay);
+            } else {
                 throw lastError;
             }
-            
-            // Extract retry delay from error if available
-            const retryMatch = errorMessage.match(/retry in (\d+(?:\.\d+)?)/i);
-            const suggestedDelay = retryMatch ? parseFloat(retryMatch[1]) * 1000 : null;
-            
-            const delay = suggestedDelay || (initialDelay * Math.pow(2, attempt));
-            console.log(`Rate limited. Retrying in ${Math.round(delay / 1000)}s (attempt ${attempt + 1}/${maxRetries})...`);
-            await sleep(delay);
         }
     }
     
@@ -123,31 +131,34 @@ export async function transcribeAudio(
 
     const prompt = `You are an expert transcription assistant. Please transcribe this audio recording with the following requirements:
 
-1. **Speaker Identification**: Do NOT attempt to identify specific speakers by name or label (like "Speaker 1"). Treat the entire audio as a single continuous transcription or simple segments if there are clear pauses.
+1. **Language Preservation**: CRITICAL - Transcribe in the ORIGINAL LANGUAGE spoken. Do NOT translate. If the audio mixes multiple languages (e.g., Chinese + English code-switching), preserve BOTH languages exactly as spoken. Keep Chinese characters as Chinese, English as English.
 
-2. **Context**: ${additionalContext}
+2. **Speaker Identification**: Do NOT attempt to identify specific speakers by name or label (like "Speaker 1"). Treat the entire audio as a single continuous transcription or simple segments if there are clear pauses.
 
-3. **Format**: Return the transcription in the following JSON format:
+3. **Context**: ${additionalContext}
+
+4. **Format**: Return the transcription in the following JSON format:
 {
-    "text": "The full transcription text",
+    "text": "The full transcription text in ORIGINAL language(s)",
     "segments": [
         {
             "speaker": "Speaker",
-            "text": "What was said",
+            "text": "What was said in ORIGINAL language",
             "startTime": 0.0,
             "endTime": 1.5
         }
     ],
     "speakers": [],
-    "language": "Detected language code (e.g., 'en', 'es', 'zh')"
+    "language": "Detected primary language code (e.g., 'en', 'es', 'zh', 'zh-en' for mixed)"
 }
 
-4. **Accuracy**: Transcribe as accurately as possible, including:
+5. **Accuracy**: Transcribe as accurately as possible, including:
    - Filler words (um, uh) only if they seem intentional
    - Technical terms and proper nouns correctly
    - Punctuation for readability
+   - Mixed language code-switching preserved exactly
 
-5. **Timestamps**: If you can detect timing, include startTime and endTime in seconds for each segment.
+6. **Timestamps**: If you can detect timing, include startTime and endTime in seconds for each segment.
 
 Return ONLY the JSON object, no additional text.`;
 

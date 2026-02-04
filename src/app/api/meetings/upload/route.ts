@@ -30,6 +30,19 @@ export async function POST(request: NextRequest) {
             );
         }
 
+        // Validate file size (Gemini API limit is ~100MB)
+        const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100MB in bytes
+        if (file.size > MAX_FILE_SIZE) {
+            return NextResponse.json(
+                { 
+                    error: `File size exceeds the maximum allowed size of 100MB. Your file is ${(file.size / (1024 * 1024)).toFixed(2)}MB.`,
+                    fileSize: file.size,
+                    maxSize: MAX_FILE_SIZE
+                },
+                { status: 413 }
+            );
+        }
+
         if (!ragStoreName) {
             return NextResponse.json(
                 { error: 'RAG store name is required' },
@@ -64,6 +77,7 @@ export async function POST(request: NextRequest) {
         // Only run transcription for audio files
         let transcription: TranscriptionResult | null = null;
         let generatedNotes = null;
+        let transcriptPath: string | null = null;
 
         if (fileType !== 'text') {
             console.log(`Transcribing file: ${fileName}, size: ${file.size}, type: ${file.type}`);
@@ -75,7 +89,7 @@ export async function POST(request: NextRequest) {
                 notes || undefined
             );
 
-            // Save transcription result
+            // Save transcription result as JSON
             const transcriptionPath = path.join(uploadsDir, "transcription.json");
             const meetingData = {
                 id: meetingId,
@@ -88,37 +102,48 @@ export async function POST(request: NextRequest) {
             };
             await writeFile(transcriptionPath, JSON.stringify(meetingData, null, 2));
 
+            // Save transcript as plain text for RAG upload
+            transcriptPath = path.join(uploadsDir, "transcript.txt");
+            const transcriptContent = `Title: ${title || file.name}\nDate: ${new Date().toISOString()}\nParticipants: ${participants || 'N/A'}\n\n${transcription.text}`;
+            await writeFile(transcriptPath, transcriptContent);
+
             // Extract Notes
             generatedNotes = await extractMeetingNotes(transcription.text, notes || undefined);
             const notesPath = path.join(uploadsDir, "notes.json");
             await writeFile(notesPath, JSON.stringify(generatedNotes, null, 2));
         }
 
-        // --- Feature: RAG Store Upload (Main Branch Feature) ---
-        // Custom metadata for document
-        const customMetadata = [
-            ...(projectName ? [{ key: 'projectName', stringValue: projectName }] : []),
-            { key: 'meetingId', stringValue: meetingId }, // Link RAG doc to local storage
-            { key: 'notes', stringValue: notes || '' }
-        ];
+        // --- Feature: RAG Store Upload ---
+        // Upload transcript to RAG (not audio file)
+        let ragUploadStatus = 'skipped';
+        if (transcriptPath) {
+            const customMetadata = [
+                ...(projectName ? [{ key: 'projectName', stringValue: projectName }] : []),
+                { key: 'meetingId', stringValue: meetingId },
+                { key: 'title', stringValue: title || file.name },
+                { key: 'date', stringValue: new Date().toISOString() }
+            ];
 
-        // Upload to project-specific RAG store
-        try {
-            await uploadToRagStore(
-                ragStoreName, 
-                audioPath, 
-                file.type || (fileType === 'text' ? 'text/plain' : 'audio/webm'),
-                fileName,
-                customMetadata
-            );
-        } catch (error) {
-            console.error('Failed to upload to RAG store:', error);
-            // We continue even if RAG upload fails, as we have local storage
+            try {
+                await uploadToRagStore(
+                    ragStoreName,
+                    transcriptPath,
+                    'text/plain',
+                    `${title || file.name} - Transcript`,
+                    customMetadata
+                );
+                ragUploadStatus = 'success';
+                console.log('Successfully uploaded transcript to RAG store');
+            } catch (error) {
+                console.error('Failed to upload transcript to RAG store:', error);
+                ragUploadStatus = 'failed';
+                // Continue even if RAG upload fails, as we have local storage
+            }
         }
 
         // Return success with meeting metadata
         const meeting = {
-            id: meetingId, // Return the ID for redirection
+            id: meetingId,
             fileName: fileName,
             fileSize: file.size,
             mimeType: file.type,
@@ -129,6 +154,7 @@ export async function POST(request: NextRequest) {
             projectId,
             projectName,
             ragStoreName,
+            ragUploadStatus,
             uploadedAt: new Date().toISOString(),
             transcription: transcription,
             generatedNotes: generatedNotes
@@ -144,9 +170,35 @@ export async function POST(request: NextRequest) {
         });
     } catch (error) {
         console.error('Error uploading meeting:', error);
+        
+        // Provide more specific error messages
+        let errorMessage = 'Failed to upload meeting';
+        let statusCode = 500;
+        
+        if (error instanceof Error) {
+            const msg = error.message.toLowerCase();
+            
+            if (msg.includes('fetch failed') || msg.includes('network')) {
+                errorMessage = 'Network error: Unable to connect to Gemini API. Please check your internet connection and try again.';
+                statusCode = 503;
+            } else if (msg.includes('api key') || msg.includes('unauthorized')) {
+                errorMessage = 'API authentication error. Please check your API key configuration.';
+                statusCode = 401;
+            } else if (msg.includes('rate limit') || msg.includes('quota')) {
+                errorMessage = 'API rate limit exceeded. Please try again later.';
+                statusCode = 429;
+            } else if (msg.includes('timeout')) {
+                errorMessage = 'Request timed out. Please try again with a smaller file.';
+                statusCode = 504;
+            } else {
+                // Include the actual error message for debugging
+                errorMessage = `Failed to upload meeting: ${error.message}`;
+            }
+        }
+        
         return NextResponse.json(
-            { error: 'Failed to upload meeting' },
-            { status: 500 }
+            { error: errorMessage },
+            { status: statusCode }
         );
     }
 }

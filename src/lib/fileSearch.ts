@@ -12,7 +12,16 @@ import os from 'os';
 let ai: GoogleGenAI;
 
 export function initialize() {
-    ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    if (!ai) {
+        ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    }
+}
+
+// Auto-initialize to ensure it's always available
+function ensureInitialized() {
+    if (!ai) {
+        initialize();
+    }
 }
 
 async function delay(ms: number): Promise<void> {
@@ -20,7 +29,7 @@ async function delay(ms: number): Promise<void> {
 }
 
 export async function createRagStore(displayName: string): Promise<string> {
-    if (!ai) throw new Error("Gemini AI not initialized");
+    ensureInitialized();
     const ragStore = await ai.fileSearchStores.create({ config: { displayName } });
     if (!ragStore.name) {
         throw new Error("Failed to create RAG store: name is missing.");
@@ -35,7 +44,7 @@ export async function uploadToRagStore(
     displayName?: string,
     customMetadata?: CustomMetadata[]
 ): Promise<void> {
-    if (!ai) throw new Error("Gemini AI not initialized");
+    ensureInitialized();
     
     const uploadConfig: any = {
         fileSearchStoreName: ragStoreName,
@@ -64,11 +73,19 @@ export async function uploadToRagStore(
         uploadConfig.config = config;
     }
     
-    let op = await ai.fileSearchStores.uploadToFileSearchStore(uploadConfig);
+    try {
+        let op = await ai.fileSearchStores.uploadToFileSearchStore(uploadConfig);
 
-    while (!op.done) {
-        await delay(3000); 
-        op = await ai.operations.get({operation: op});
+        while (!op.done) {
+            await delay(3000); 
+            op = await ai.operations.get({operation: op});
+        }
+        
+        console.log(`Successfully uploaded to RAG store: ${displayName}`);
+    } catch (error: any) {
+        // Provide more context in the error
+        const errorMsg = error?.message || String(error);
+        throw new Error(`RAG store upload failed for ${displayName}: ${errorMsg}`);
     }
 }
 
@@ -83,7 +100,7 @@ export async function saveProjectMetadata(
     projectName: string,
     projectData: any
 ): Promise<void> {
-    if (!ai) throw new Error("Gemini AI not initialized");
+    ensureInitialized();
     
     let tempPath: string | null = null;
 
@@ -123,16 +140,19 @@ export async function saveProjectMetadata(
  * Analyze meeting document and generate summary and action items
  */
 export async function analyzeMeeting(documentName: string): Promise<{ summary: string; actionItems: string[]; metadata: any } | null> {
-    if (!ai) throw new Error("Gemini AI not initialized");
+    ensureInitialized();
     
-    console.log('Analyzing meeting document:', documentName);
+    // Decode URL-encoded document name
+    const decodedDocumentName = decodeURIComponent(documentName);
+    
+    console.log('Analyzing meeting document:', decodedDocumentName);
     
     try {
         // Get document details
-        const doc = await ai.fileSearchStores.documents.get({ name: documentName });
+        const doc = await ai.fileSearchStores.documents.get({ name: decodedDocumentName });
         
         if (!doc) {
-            console.error(`Document not found: ${documentName}`);
+            console.error(`Document not found: ${decodedDocumentName}`);
             return null;
         }
         
@@ -145,13 +165,13 @@ export async function analyzeMeeting(documentName: string): Promise<{ summary: s
         }
         
         // Extract the store name from document name
-        const storeNameMatch = documentName.match(/^(fileSearchStores\/[^\/]+)/);
+        const storeNameMatch = decodedDocumentName.match(/^(fileSearchStores\/[^\/]+)/);
         if (!storeNameMatch) {
             throw new Error('Invalid document name format');
         }
         const storeName = storeNameMatch[1];
         
-        const displayName = doc.displayName || documentName.split('/').pop() || 'Document';
+        const displayName = doc.displayName || decodedDocumentName.split('/').pop() || 'Document';
         
         // Generate analysis using file search
         const response = await ai.models.generateContent({
@@ -212,13 +232,13 @@ If there are no action items, write "ACTION ITEMS:\n- No action items identified
             }
         };
     } catch (error) {
-        console.error(`Failed to get document content for ${documentName}:`, error);
+        console.error(`Failed to get document content for ${decodedDocumentName}:`, error);
         return null;
     }
 }
 
 export async function fileSearch(ragStoreName: string, query: string): Promise<QueryResult> {
-    if (!ai) throw new Error("Gemini AI not initialized");
+    ensureInitialized();
     const response: GenerateContentResponse = await ai.models.generateContent({
         model: 'gemini-2.5-flash',
         contents: query + "DO NOT ASK THE USER TO READ THE MANUAL, pinpoint the relevant sections in the response itself. If the information is not explicitly stated in the transcripts, respond with ‘Not mentioned in the uploaded files.",
@@ -245,7 +265,7 @@ export async function generateExampleQuestions(
     contextType: "project" | "meeting",
     contextId: string
 ): Promise<string[]> {
-    if (!ai) throw new Error("Gemini AI not initialized");
+    ensureInitialized();
     try {
         // Build enhanced prompt based on context type
         let promptContext = "";
@@ -314,7 +334,7 @@ export async function generateExampleQuestions(
 }
 
 export async function listDocumentsInRagStore(ragStoreName: string): Promise<Meeting[]> {
-    if (!ai) throw new Error("Gemini AI not initialized");
+    ensureInitialized();
     
     const documents: Meeting[] = [];
     
@@ -346,7 +366,7 @@ export async function listDocumentsInRagStore(ragStoreName: string): Promise<Mee
 }
 
 export async function listAllRagStores(): Promise<RagStore[]> {
-    if (!ai) throw new Error("Gemini AI not initialized");
+    ensureInitialized();
     
     const allStores: RagStore[] = [];
     
@@ -394,7 +414,7 @@ export interface Project {
 }
 
 export async function listAllProjects(): Promise<Project[]> {
-    if (!ai) throw new Error("Gemini AI not initialized");
+    ensureInitialized();
     
     try {
         const ragStores = await listAllRagStores();
@@ -471,7 +491,7 @@ export async function listAllProjects(): Promise<Project[]> {
  * This provides complete isolation between projects.
  */
 export async function getProjectRagStore(projectId: string, projectName?: string): Promise<string> {
-    if (!ai) throw new Error("Gemini AI not initialized");
+    ensureInitialized();
     
     const displayName = `Project_${projectId}`;
     
@@ -534,7 +554,7 @@ export async function getProjectRagStore(projectId: string, projectName?: string
  * distinguished by custom metadata.
  */
 export async function getUserRagStore(userId: string): Promise<string> {
-    if (!ai) throw new Error("Gemini AI not initialized");
+    ensureInitialized();
     
     const displayName = `User_${userId}`;
     
@@ -562,7 +582,7 @@ export async function getUserRagStore(userId: string): Promise<string> {
  * Check if any projects exist by checking for Project RAG stores
  */
 export async function userHasProjects(userId: string): Promise<boolean> {
-    if (!ai) throw new Error("Gemini AI not initialized");
+    ensureInitialized();
     
     try {
         const ragStores = await listAllRagStores();
