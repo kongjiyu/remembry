@@ -5,6 +5,10 @@
 import { GoogleGenAI, GenerateContentResponse, Type } from "@google/genai";
 import { RagStore, Document, QueryResult, CustomMetadata } from '../types.js';
 
+import { writeFile, unlink } from 'fs/promises';
+import path from 'path';
+import os from 'os';
+
 let ai: GoogleGenAI;
 
 export function initialize() {
@@ -26,27 +30,28 @@ export async function createRagStore(displayName: string): Promise<string> {
 
 export async function uploadToRagStore(
     ragStoreName: string, 
-    file: File, 
+    filePath: string,
+    mimeType: string,
+    displayName?: string,
     customMetadata?: CustomMetadata[]
 ): Promise<void> {
     if (!ai) throw new Error("Gemini AI not initialized");
     
     const uploadConfig: any = {
         fileSearchStoreName: ragStoreName,
-        file: file
+        file: filePath
     };
     
     // Build config object
     const config: any = {};
     
-    // Explicitly set the display name to preserve the file name
-    if (file.name) {
-        config.displayName = file.name;
+    // Explicitly set the display name
+    if (displayName) {
+        config.displayName = displayName;
     }
     
-    // Only add mimeType if the file has a valid type
-    if (file.type && file.type.includes('/')) {
-        config.mimeType = file.type;
+    if (mimeType) {
+        config.mimeType = mimeType;
     }
     
     // Add custom metadata if provided
@@ -80,11 +85,16 @@ export async function saveProjectMetadata(
 ): Promise<void> {
     if (!ai) throw new Error("Gemini AI not initialized");
     
+    let tempPath: string | null = null;
+
     try {
         // Create a text file with project metadata
         const projectInfo = JSON.stringify(projectData, null, 2);
-        const blob = new Blob([projectInfo], { type: 'text/plain' });
-        const file = new File([blob], `project-${projectId}.txt`, { type: 'text/plain' });
+        
+        // Write to temp file
+        const fileName = `project-${projectId}.txt`;
+        tempPath = path.join(os.tmpdir(), fileName);
+        await writeFile(tempPath, projectInfo);
         
         // Upload with special metadata to identify as project metadata
         const customMetadata = [
@@ -93,11 +103,19 @@ export async function saveProjectMetadata(
             { key: 'documentType', stringValue: 'project-metadata' },
         ];
         
-        await uploadToRagStore(ragStoreName, file, customMetadata);
+        await uploadToRagStore(ragStoreName, tempPath, 'text/plain', fileName, customMetadata);
         console.log(`Project metadata saved for ${projectName}`);
     } catch (error) {
         console.error(`Failed to save project metadata for ${projectName}:`, error);
         throw error;
+    } finally {
+        if (tempPath) {
+            try {
+                await unlink(tempPath);
+            } catch (e) {
+                console.warn('Failed to delete temp file:', tempPath);
+            }
+        }
     }
 }
 
@@ -473,21 +491,32 @@ export async function getProjectRagStore(projectId: string, projectName?: string
         
         // Save project name as metadata if provided
         if (projectName) {
+            let tempPath: string | null = null;
             try {
                 const metadata = { projectId, projectName, createdAt: new Date().toISOString() };
-                const blob = new Blob([JSON.stringify(metadata, null, 2)], { type: 'text/plain' });
-                const file = new File([blob], '.project-metadata.json', { type: 'text/plain' });
+                const fileName = '.project-metadata.json';
+                
+                tempPath = path.join(os.tmpdir(), `project-meta-${projectId}.json`);
+                await writeFile(tempPath, JSON.stringify(metadata, null, 2));
                 
                 const customMetadata = [
                     { key: 'projectName', stringValue: projectName },
                     { key: 'isMetadata', stringValue: 'true' }
                 ];
                 
-                await uploadToRagStore(ragStoreName, file, customMetadata);
+                await uploadToRagStore(ragStoreName, tempPath, 'application/json', fileName, customMetadata);
                 console.log(`Project name metadata saved for ${projectName}`);
             } catch (metaError) {
                 console.warn(`Failed to save project name metadata:`, metaError);
                 // Don't fail the whole operation if metadata save fails
+            } finally {
+                if (tempPath) {
+                    try {
+                        await unlink(tempPath);
+                    } catch (e) {
+                         // ignore cleanup error
+                    }
+                }
             }
         }
         

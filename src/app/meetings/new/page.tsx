@@ -371,11 +371,11 @@ export default function NewMeetingPage() {
                             <div className="flex gap-2">
                                 <DropdownMenu>
                                     <DropdownMenuTrigger asChild>
-                                        <Button variant="outline" className="w-full justify-between">
+                                        <Button variant="outline" className="flex-1 justify-between overflow-hidden min-w-0">
                                             {selectedProject ? (
-                                                <span className="flex items-center gap-2">
-                                                    <FolderKanban className="size-4" />
-                                                    {selectedProject.name}
+                                                <span className="flex items-center gap-2 truncate">
+                                                    <FolderKanban className="size-4 shrink-0" />
+                                                    <span className="truncate">{selectedProject.name}</span>
                                                 </span>
                                             ) : (
                                                 <span className="text-muted-foreground">Select a project</span>

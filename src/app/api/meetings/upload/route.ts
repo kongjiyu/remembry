@@ -102,13 +102,15 @@ export async function POST(request: NextRequest) {
             { key: 'notes', stringValue: notes || '' }
         ];
 
-        // Create a new File object with the generated ID as name, but preserve content
-        // This ensures the RAG store uses our ID as the document name
-        const renamedFile = new File([blobFromBuffer(buffer)], fileName, { type: file.type });
-
         // Upload to project-specific RAG store
         try {
-            await uploadToRagStore(ragStoreName, renamedFile, customMetadata);
+            await uploadToRagStore(
+                ragStoreName, 
+                audioPath, 
+                file.type || (fileType === 'text' ? 'text/plain' : 'audio/webm'),
+                fileName,
+                customMetadata
+            );
         } catch (error) {
             console.error('Failed to upload to RAG store:', error);
             // We continue even if RAG upload fails, as we have local storage
@@ -149,7 +151,3 @@ export async function POST(request: NextRequest) {
     }
 }
 
-// Helper to convert Buffer to Blob (Node.js environment)
-function blobFromBuffer(buffer: Buffer): Blob {
-    return new Blob([new Uint8Array(buffer)]);
-}
