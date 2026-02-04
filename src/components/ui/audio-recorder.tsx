@@ -3,6 +3,7 @@
 import { useAudioRecorder } from "@/hooks/useAudioRecorder";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { AudioVisualizer } from "@/components/ui/audio-visualizer";
 import { Mic, Square, Pause, Play, RotateCcw, AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -26,6 +27,7 @@ export function AudioRecorder({ onRecordingComplete, className }: AudioRecorderP
         audioUrl,
         error,
         hasPermission,
+        analyser,
         startRecording,
         stopRecording,
         pauseRecording,
@@ -126,25 +128,13 @@ export function AudioRecorder({ onRecordingComplete, className }: AudioRecorderP
         return (
             <Card className={cn("border-primary/50", className)}>
                 <CardContent className="flex flex-col items-center justify-center py-8">
-                    {/* Animated Recording Indicator */}
-                    <div className="relative mb-6">
-                        <div className={cn(
-                            "flex size-24 items-center justify-center rounded-full bg-primary/10",
-                            !isPaused && "animate-pulse"
-                        )}>
-                            <div className={cn(
-                                "flex size-16 items-center justify-center rounded-full",
-                                isPaused ? "bg-muted" : "bg-destructive"
-                            )}>
-                                <Mic className="size-8 text-white" />
-                            </div>
-                        </div>
-                        {!isPaused && (
-                            <>
-                                <div className="absolute inset-0 rounded-full border-2 border-primary/30 animate-ping" />
-                                <div className="absolute inset-[-8px] rounded-full border border-primary/20 animate-ping" style={{ animationDelay: "0.5s" }} />
-                            </>
-                        )}
+                    {/* Visualizer */}
+                    <div className="w-full max-w-md h-24 mb-6 flex items-center justify-center">
+                        <AudioVisualizer 
+                            analyser={analyser} 
+                            isRecording={!isPaused} 
+                            className="w-full h-full"
+                        />
                     </div>
 
                     <h3 className="text-lg font-semibold mb-1">

@@ -10,6 +10,7 @@ export interface AudioRecorderState {
     audioUrl: string | null;
     error: string | null;
     hasPermission: boolean | null;
+    analyser: AnalyserNode | null;
 }
 
 export interface AudioRecorderActions {
@@ -29,9 +30,12 @@ export function useAudioRecorder(): AudioRecorderState & AudioRecorderActions {
     const [audioUrl, setAudioUrl] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [hasPermission, setHasPermission] = useState<boolean | null>(null);
+    const [analyser, setAnalyser] = useState<AnalyserNode | null>(null);
 
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
     const streamRef = useRef<MediaStream | null>(null);
+    const audioContextRef = useRef<AudioContext | null>(null);
+    const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
     const chunksRef = useRef<Blob[]>([]);
     const timerRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -43,6 +47,9 @@ export function useAudioRecorder(): AudioRecorderState & AudioRecorderActions {
             }
             if (streamRef.current) {
                 streamRef.current.getTracks().forEach(track => track.stop());
+            }
+            if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
+                audioContextRef.current.close();
             }
             if (audioUrl) {
                 URL.revokeObjectURL(audioUrl);
@@ -88,6 +95,18 @@ export function useAudioRecorder(): AudioRecorderState & AudioRecorderActions {
             streamRef.current = stream;
             setHasPermission(true);
 
+            // Setup Audio Analysis
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+            const analyserNode = audioContext.createAnalyser();
+            const source = audioContext.createMediaStreamSource(stream);
+            source.connect(analyserNode);
+            
+            analyserNode.fftSize = 256;
+            audioContextRef.current = audioContext;
+            sourceRef.current = source;
+            setAnalyser(analyserNode);
+
             // Try WebM first (better quality), fall back to alternatives
             const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
                 ? "audio/webm;codecs=opus"
@@ -118,6 +137,12 @@ export function useAudioRecorder(): AudioRecorderState & AudioRecorderActions {
 
                 // Stop all tracks
                 stream.getTracks().forEach(track => track.stop());
+                
+                // Close Audio Context
+                if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
+                    audioContextRef.current.close();
+                }
+                setAnalyser(null);
             };
 
             mediaRecorder.onerror = () => {
@@ -210,6 +235,7 @@ export function useAudioRecorder(): AudioRecorderState & AudioRecorderActions {
         audioUrl,
         error,
         hasPermission,
+        analyser,
         startRecording,
         stopRecording,
         pauseRecording,

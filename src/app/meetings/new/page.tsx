@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { AudioRecorder } from "@/components/ui/audio-recorder";
-import { Upload, Mic, FileAudio, FileText, X, Play, Pause, Loader2, FolderKanban, Plus } from "lucide-react";
+import { Upload, Mic, FileAudio, FileText, X, Loader2, FolderKanban, Plus, Download } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
     DropdownMenu,
@@ -72,27 +72,36 @@ export default function NewMeetingPage() {
     const [projects, setProjects] = useState<Project[]>([]);
     const [selectedProject, setSelectedProject] = useState<Project | null>(null);
     const [loadingProjects, setLoadingProjects] = useState(true);
+    const [shouldAutoSubmit, setShouldAutoSubmit] = useState(false);
 
     useEffect(() => {
+        const fetchProjects = async () => {
+            try {
+                const response = await fetch('/api/projects');
+                if (response.ok) {
+                    const data = await response.json();
+                    setProjects(data.projects || []);
+                    if (data.projects.length > 0) {
+                        setSelectedProject(data.projects[0]);
+                    }
+                }
+            } catch (error) {
+                console.error('Error fetching projects:', error);
+            } finally {
+                setLoadingProjects(false);
+            }
+        };
+
         fetchProjects();
     }, []);
 
-    const fetchProjects = async () => {
-        try {
-            const response = await fetch('/api/projects');
-            if (response.ok) {
-                const data = await response.json();
-                setProjects(data.projects || []);
-                if (data.projects.length > 0) {
-                    setSelectedProject(data.projects[0]);
-                }
-            }
-        } catch (error) {
-            console.error('Error fetching projects:', error);
-        } finally {
-            setLoadingProjects(false);
+    // Auto-submit effect for recordings
+    useEffect(() => {
+        if (shouldAutoSubmit && uploadedFile && selectedProject) {
+            handleSubmit();
+            setShouldAutoSubmit(false);
         }
-    };
+    }, [shouldAutoSubmit, uploadedFile, selectedProject]);
 
     const acceptedAudioFormats = ["audio/mp3", "audio/mpeg", "audio/wav", "audio/x-wav", "audio/m4a", "audio/x-m4a", "audio/webm", "audio/ogg"];
     const acceptedTextFormats = ["text/plain"];
@@ -164,6 +173,7 @@ export default function NewMeetingPage() {
             url,
             fileType: "audio",
         });
+        setShouldAutoSubmit(true);
     };
 
     const handleRemoveFile = () => {
@@ -173,7 +183,7 @@ export default function NewMeetingPage() {
         setUploadedFile(null);
     };
 
-    const handleSubmit = async () => {
+    const handleSubmit = useCallback(async () => {
         if (!uploadedFile || !selectedProject) {
             toast.error('Please select a project');
             return;
@@ -223,7 +233,15 @@ export default function NewMeetingPage() {
         } finally {
             setIsProcessing(false);
         }
-    };
+    }, [uploadedFile, selectedProject, title, notes, router]);
+
+    // Auto-submit effect for recordings
+    useEffect(() => {
+        if (shouldAutoSubmit && uploadedFile && selectedProject) {
+            handleSubmit();
+            setShouldAutoSubmit(false);
+        }
+    }, [shouldAutoSubmit, uploadedFile, selectedProject, handleSubmit]);
 
     return (
         <DashboardLayout
@@ -289,6 +307,18 @@ export default function NewMeetingPage() {
                                             {uploadedFile.fileType === "text" && " · Text Transcript"}
                                         </p>
                                     </div>
+                                    {uploadedFile.url && (
+                                        <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            asChild
+                                            className="text-muted-foreground hover:text-primary"
+                                        >
+                                            <a href={uploadedFile.url} download={uploadedFile.name}>
+                                                <Download className="size-4" />
+                                            </a>
+                                        </Button>
+                                    )}
                                     <Button
                                         variant="ghost"
                                         size="icon"
@@ -445,7 +475,7 @@ export default function NewMeetingPage() {
                 {/* Submit Button */}
                 <div className="flex justify-end gap-3">
                     <Button variant="outline" asChild>
-                        <a href="/meetings">Cancel</a>
+                        <Link href="/meetings">Cancel</Link>
                     </Button>
                     <Button
                         onClick={handleSubmit}
