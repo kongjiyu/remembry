@@ -64,15 +64,24 @@ async function retryWithBackoff<T>(
                                    errorMessage.includes("ECONNREFUSED") ||
                                    errorMessage.includes("ETIMEDOUT") ||
                                    errorMessage.includes("network");
+
+            // Check if it's a server error (500) or internal error
+            const isServerError = errorMessage.includes("500") ||
+                                  errorMessage.includes("INTERNAL") ||
+                                  errorMessage.includes("Failed to convert server response to JSON");
             
-            // Retry on network errors or rate limits
-            if ((isRateLimited || isNetworkError) && attempt < maxRetries) {
+            // Retry on network errors, rate limits, or server errors
+            if ((isRateLimited || isNetworkError || isServerError) && attempt < maxRetries) {
                 // Extract retry delay from error if available
                 const retryMatch = errorMessage.match(/retry in (\d+(?:\.\d+)?)/i);
                 const suggestedDelay = retryMatch ? parseFloat(retryMatch[1]) * 1000 : null;
                 
                 const delay = suggestedDelay || (initialDelay * Math.pow(2, attempt));
-                const reason = isRateLimited ? "Rate limited" : "Network error";
+                let reason = "Unknown retry reason";
+                if (isRateLimited) reason = "Rate limited";
+                else if (isNetworkError) reason = "Network error";
+                else if (isServerError) reason = "Server error";
+
                 console.log(`${reason}. Retrying in ${Math.round(delay / 1000)}s (attempt ${attempt + 1}/${maxRetries})...`);
                 await sleep(delay);
             } else {
@@ -112,11 +121,12 @@ export async function transcribeAudio(
     console.log(`File uploaded: ${fileUri} (${fileName})`);
 
     // Wait for the file to be active
-    let file = await genAI.files.get({ name: fileName });
+    let file = await retryWithBackoff(async () => await genAI.files.get({ name: fileName }));
+    
     while (file.state === "PROCESSING") {
         console.log("File is processing...");
         await sleep(2000);
-        file = await genAI.files.get({ name: fileName });
+        file = await retryWithBackoff(async () => await genAI.files.get({ name: fileName }));
     }
 
     if (file.state === "FAILED") {
