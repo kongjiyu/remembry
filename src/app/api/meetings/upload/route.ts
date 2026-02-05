@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { initialize, uploadToRagStore } from '@/lib/fileSearch';
+import { initialize, uploadToRagStore, getProjectRagStore } from '@/lib/fileSearch';
 import { transcribeAudio, extractMeetingNotes, TranscriptionResult } from '@/lib/gemini';
-import { writeFile, mkdir } from 'fs/promises';
+import { writeFile, mkdir, readFile } from 'fs/promises';
 import { existsSync } from 'fs';
 import path from 'path';
 
@@ -43,19 +43,17 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        if (!ragStoreName) {
-            return NextResponse.json(
-                { error: 'RAG store name is required' },
-                { status: 400 }
-            );
-        }
-
         if (!projectId) {
             return NextResponse.json(
                 { error: 'Project ID is required' },
                 { status: 400 }
             );
         }
+
+        // Get the project-specific RAG store (ignore ragStoreName from form data)
+        console.log(`[UPLOAD] Getting project RAG store for project: ${projectId}`);
+        const actualRagStoreName = await getProjectRagStore(projectId, projectName);
+        console.log(`[UPLOAD] Using RAG store: ${actualRagStoreName}`);
 
         // Generate a unique meeting ID
         const meetingId = `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
@@ -70,17 +68,69 @@ export async function POST(request: NextRequest) {
 
         const arrayBuffer = await file.arrayBuffer();
         const buffer = Buffer.from(arrayBuffer);
-        const audioPath = path.join(uploadsDir, `audio${fileExtension}`);
-        await writeFile(audioPath, buffer);
+        const filePath = path.join(uploadsDir, `audio${fileExtension}`);
+        await writeFile(filePath, buffer);
 
         // --- Feature: Automated Transcription & Notes Extraction ---
-        // Only run transcription for audio files
         let transcription: TranscriptionResult | null = null;
         let generatedNotes = null;
         let transcriptPath: string | null = null;
+        let textContent = '';
 
-        if (fileType !== 'text') {
-            console.log(`Transcribing file: ${fileName}, size: ${file.size}, type: ${file.type}`);
+        console.log(`[UPLOAD] File type: ${fileType}, Processing file: ${fileName}`);
+
+        if (fileType === 'text') {
+            // Handle text file upload
+            console.log(`[TEXT] Processing text file: ${fileName}`);
+            
+            // Read the text content
+            textContent = buffer.toString('utf-8');
+            console.log(`[TEXT] Read ${textContent.length} characters from text file`);
+            
+            // Save as transcript for RAG upload
+            transcriptPath = path.join(uploadsDir, "transcript.txt");
+            console.log(`[TEXT] Transcript path: ${transcriptPath}`);
+            const transcriptContent = `Title: ${title || file.name}\nDate: ${new Date().toISOString()}\nParticipants: ${participants || 'N/A'}\n\n${textContent}`;
+            await writeFile(transcriptPath, transcriptContent);
+            
+            // Create a basic transcription structure for consistency
+            transcription = {
+                text: textContent,
+                segments: [{
+                    startTime: 0,
+                    endTime: 0,
+                    text: textContent,
+                    speaker: "Unknown"
+                }],
+                speakers: ["Unknown"],
+                duration: 0,
+                language: "en"
+            };
+            
+            // Save transcription result as JSON
+            const transcriptionPath = path.join(uploadsDir, "transcription.json");
+            const meetingData = {
+                id: meetingId,
+                title: title || file.name,
+                context: notes || "",
+                createdAt: new Date().toISOString(),
+                status: "completed",
+                transcription,
+                audioPath: `uploads/${meetingId}/audio${fileExtension}`,
+            };
+            await writeFile(transcriptionPath, JSON.stringify(meetingData, null, 2));
+            console.log(`[TEXT] Saved transcription.json`);
+            
+            // Extract Notes from text content
+            console.log(`[TEXT] Extracting meeting notes...`);
+            generatedNotes = await extractMeetingNotes(textContent, notes || undefined);
+            const notesPath = path.join(uploadsDir, "notes.json");
+            await writeFile(notesPath, JSON.stringify(generatedNotes, null, 2));
+            console.log(`[TEXT] Saved notes.json`);
+            
+        } else {
+            // Handle audio file upload
+            console.log(`[AUDIO] Transcribing file: ${fileName}, size: ${file.size}, type: ${file.type}`);
             
             // Normalize MIME type for Gemini API
             // WebM files may be reported as video/webm by browsers, but Gemini accepts audio/webm
@@ -93,7 +143,7 @@ export async function POST(request: NextRequest) {
             
             // Transcribe
             transcription = await transcribeAudio(
-                audioPath,
+                filePath,
                 mimeType,
                 notes || undefined
             );
@@ -124,30 +174,42 @@ export async function POST(request: NextRequest) {
 
         // --- Feature: RAG Store Upload ---
         // Upload transcript to RAG (not audio file)
+        console.log(`[RAG] Checking if transcript should be uploaded...`);
+        console.log(`[RAG] transcriptPath = ${transcriptPath}`);
+        console.log(`[RAG] actualRagStoreName = ${actualRagStoreName}`);
+        
         let ragUploadStatus = 'skipped';
         if (transcriptPath) {
+            console.log(`[RAG] Starting RAG upload process...`);
             const customMetadata = [
                 ...(projectName ? [{ key: 'projectName', stringValue: projectName }] : []),
+                { key: 'projectId', stringValue: projectId },
                 { key: 'meetingId', stringValue: meetingId },
                 { key: 'title', stringValue: title || file.name },
                 { key: 'date', stringValue: new Date().toISOString() }
             ];
+            
+            console.log(`[RAG] Metadata prepared:`, customMetadata);
 
             try {
+                console.log(`[RAG] Calling uploadToRagStore...`);
                 await uploadToRagStore(
-                    ragStoreName,
+                    actualRagStoreName,
                     transcriptPath,
                     'text/plain',
                     `${title || file.name} - Transcript`,
                     customMetadata
                 );
                 ragUploadStatus = 'success';
-                console.log('Successfully uploaded transcript to RAG store');
+                console.log(`✓ Successfully uploaded transcript to RAG store: ${actualRagStoreName}`);
+                console.log(`  Meeting ID: ${meetingId}, Title: ${title || file.name}`);
             } catch (error) {
-                console.error('Failed to upload transcript to RAG store:', error);
+                console.error('✗ Failed to upload transcript to RAG store:', error);
                 ragUploadStatus = 'failed';
                 // Continue even if RAG upload fails, as we have local storage
             }
+        } else {
+            console.log(`[RAG] Skipped - transcriptPath is null/undefined`);
         }
 
         // Return success with meeting metadata
@@ -162,7 +224,7 @@ export async function POST(request: NextRequest) {
             notes: notes || '',
             projectId,
             projectName,
-            ragStoreName,
+            ragStoreName: actualRagStoreName, // Return the actual RAG store name used
             ragUploadStatus,
             uploadedAt: new Date().toISOString(),
             transcription: transcription,

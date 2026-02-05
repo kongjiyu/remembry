@@ -3,11 +3,12 @@
  * SPDX-License-Identifier: Apache-2.0
 */
 import { GoogleGenAI, GenerateContentResponse, Type } from "@google/genai";
-import { RagStore, Document, QueryResult, CustomMetadata } from '../types.js';
+import { RagStore, Document, QueryResult, CustomMetadata, GroundingChunk } from '../types.js';
 
 import { writeFile, unlink } from 'fs/promises';
 import path from 'path';
 import os from 'os';
+import crypto from 'crypto';
 
 let ai: GoogleGenAI;
 
@@ -74,17 +75,21 @@ export async function uploadToRagStore(
     }
     
     try {
+        console.log(`Starting upload to RAG store: ${displayName}`);
         let op = await ai.fileSearchStores.uploadToFileSearchStore(uploadConfig);
+        console.log(`Upload operation created, waiting for completion...`);
 
         while (!op.done) {
             await delay(3000); 
             op = await ai.operations.get({operation: op});
         }
         
-        console.log(`Successfully uploaded to RAG store: ${displayName}`);
+        console.log(`✓ Successfully uploaded to RAG store: ${displayName}`);
+        console.log(`Note: Document may need a few seconds to be indexed and queryable`);
     } catch (error: any) {
         // Provide more context in the error
         const errorMsg = error?.message || String(error);
+        console.error(`✗ RAG store upload failed for ${displayName}:`, errorMsg);
         throw new Error(`RAG store upload failed for ${displayName}: ${errorMsg}`);
     }
 }
@@ -237,6 +242,51 @@ If there are no action items, write "ACTION ITEMS:\n- No action items identified
     }
 }
 
+/**
+ * NEW FUNCTION: Retrieve relevant chunks from File Search WITHOUT generating an answer.
+ * This function uses File Search ONLY for retrieval, not generation.
+ * Used in multi-store architecture where generation happens separately.
+ */
+export async function retrieveChunks(ragStoreName: string, query: string): Promise<GroundingChunk[]> {
+    ensureInitialized();
+    const response: GenerateContentResponse = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: `Find relevant information for: ${query}`,
+        config: {
+            tools: [
+                {
+                    fileSearch: {
+                        fileSearchStoreNames: [ragStoreName],
+                    }
+                }
+            ]
+        }
+    });
+
+    return response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
+}
+
+/**
+ * NEW FUNCTION: Generate a response using the LLM WITHOUT File Search.
+ * This function performs pure generation without retrieval.
+ * Used for synthesis after multi-store retrieval is complete.
+ */
+export async function generateResponse(prompt: string): Promise<string> {
+    ensureInitialized();
+    const response: GenerateContentResponse = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: prompt,
+        config: {
+            maxOutputTokens: 8192,
+            temperature: 0.7,
+            topP: 0.95,
+            topK: 40
+        }
+    });
+
+    return response.text || '';
+}
+
 export async function fileSearch(ragStoreName: string, query: string): Promise<QueryResult> {
     ensureInitialized();
     const response: GenerateContentResponse = await ai.models.generateContent({
@@ -267,20 +317,36 @@ export async function generateExampleQuestions(
 ): Promise<string[]> {
     ensureInitialized();
     try {
+        // First, verify that documents exist in the RAG store
+        const documents = await listDocumentsInRagStore(ragStoreName);
+        console.log(`Total documents in RAG store: ${documents.length}`);
+        
+        const validDocuments = documents.filter(doc => !doc.displayName?.startsWith('.project-metadata'));
+        
+        if (validDocuments.length === 0) {
+            console.log(`No valid meeting documents found in RAG store ${ragStoreName}`);
+            console.log(`All documents: ${documents.map(d => d.displayName).join(', ') || 'none'}`);
+            console.log(`Note: If you just uploaded a document, it may take 5-10 seconds to be indexed`);
+            return [];
+        }
+        
+        console.log(`Found ${validDocuments.length} valid document(s) for example questions:`);
+        validDocuments.forEach(doc => console.log(`  - ${doc.displayName}`));
+        
         // Build enhanced prompt based on context type
         let promptContext = "";
         
         if (contextType === "project") {
-            // For projects, instruct AI to focus on documents with specific project ID
-            promptContext = `Focus ONLY on documents that belong to project ID: ${contextId}. Analyze the uploaded documents from this specific project and identify the main topics or subjects covered.`;
+            // For projects, instruct AI to analyze all documents in this project-specific store
+            promptContext = `Analyze the uploaded meeting transcripts and documents from this project. The store contains ${validDocuments.length} document(s). Identify the main topics or subjects covered across these documents.`;
         } else if (contextType === "meeting") {
             // For meetings, focus on the specific meeting document
-            promptContext = `Focus ONLY on the meeting document: ${contextId}. Analyze this specific meeting transcript.`;
+            promptContext = `Focus on the meeting transcript: ${contextId}. Analyze this specific meeting.`;
         }
 
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
-            contents: `${promptContext} DO NOT GUESS OR HALLUCINATE. Generate 3 short and practical example questions that a user might ask about the content in English. Return ONLY a JSON array of question strings. For example: ["What were the main action items?", "Who is responsible for the project?", "What is the deadline?"]`,
+            contents: `${promptContext} Based on the actual content in the documents, generate 3 short and practical example questions that a user might ask. Return ONLY a JSON array of question strings. For example: ["What were the main action items?", "Who is responsible for the project?", "What is the deadline?"]`,
             config: {
                 tools: [
                     {
@@ -406,6 +472,7 @@ export interface Meeting {
 export interface Project {
     id: string;
     name: string;
+    color?: string;
     ragStoreName: string;
     displayName: string;
     createdAt: string;
@@ -419,8 +486,13 @@ export async function listAllProjects(): Promise<Project[]> {
     try {
         const ragStores = await listAllRagStores();
         
-        // Filter only project RAG stores (those starting with "Project_")
-        const projectStores = ragStores.filter(store => store.displayName?.startsWith('Project_'));
+        // Filter only project RAG stores (exclude user-specific or other types of stores)
+        // Projects either start with "Project_" (old format) or have project metadata
+        const projectStores = ragStores.filter(store => 
+            store.displayName?.startsWith('Project_') || 
+            // Include any store that doesn't look like a user/system store
+            (store.displayName && !store.displayName.startsWith('User_') && !store.displayName.startsWith('System_'))
+        );
         
         const allProjects: Project[] = [];
         
@@ -428,45 +500,67 @@ export async function listAllProjects(): Promise<Project[]> {
             if (!store.name || !store.displayName) continue;
             
             try {
-                // Extract project ID from display name (Project_<projectId>)
-                const projectId = store.displayName.replace('Project_', '');
-                
                 // Fetch all documents in this project's RAG store
                 const allDocs = await listDocumentsInRagStore(store.name);
                 
                 // Separate metadata document from actual meetings
                 const meetings = allDocs.filter(doc => doc.displayName !== '.project-metadata.json');
                 
-                // Try to get project name from metadata document
-                let projectName = `Project ${projectId.slice(0, 8)}`;
+                // Try to get project name, ID, and color from metadata document
+                let projectName = store.displayName;
+                let projectId = '';
+                let color = 'bg-blue-500'; // default color
                 const metadataDoc = allDocs.find(doc => doc.displayName === '.project-metadata.json');
                 
                 if (metadataDoc?.name) {
                     try {
                         const doc = await ai.fileSearchStores.documents.get({ name: metadataDoc.name });
                         const projectNameMetadata = doc.customMetadata?.find(m => m.key === 'projectName');
+                        const projectIdMetadata = doc.customMetadata?.find(m => m.key === 'projectId');
+                        const colorMetadata = doc.customMetadata?.find(m => m.key === 'color');
+                        
                         if (projectNameMetadata?.stringValue) {
                             projectName = projectNameMetadata.stringValue;
                         }
+                        if (projectIdMetadata?.stringValue) {
+                            projectId = projectIdMetadata.stringValue;
+                        }
+                        if (colorMetadata?.stringValue) {
+                            color = colorMetadata.stringValue;
+                        }
                     } catch (error) {
-                        console.warn(`Failed to get project name from metadata:`, error);
+                        console.warn(`Failed to get project metadata:`, error);
                     }
-                } else if (meetings.length > 0 && meetings[0].name) {
-                    // Fallback: try to get from first meeting's metadata
-                    try {
-                        const doc = await ai.fileSearchStores.documents.get({ name: meetings[0].name });
-                        const projectNameMetadata = doc.customMetadata?.find(m => m.key === 'projectName');
-                        if (projectNameMetadata?.stringValue) {
-                            projectName = projectNameMetadata.stringValue;
+                }
+                
+                // Fallback: Extract project ID from display name if it follows old format (Project_<projectId>)
+                if (!projectId && store.displayName.startsWith('Project_')) {
+                    projectId = store.displayName.replace('Project_', '');
+                    projectName = `Project ${projectId.slice(0, 8)}`;
+                } else if (!projectId) {
+                    // If still no projectId, try to get from first meeting's metadata
+                    if (meetings.length > 0 && meetings[0].name) {
+                        try {
+                            const doc = await ai.fileSearchStores.documents.get({ name: meetings[0].name });
+                            const projectIdMetadata = doc.customMetadata?.find(m => m.key === 'projectId');
+                            if (projectIdMetadata?.stringValue) {
+                                projectId = projectIdMetadata.stringValue;
+                            }
+                        } catch (error) {
+                            console.warn(`Failed to get project ID from meeting metadata:`, error);
                         }
-                    } catch (error) {
-                        console.warn(`Failed to get project name from meeting metadata:`, error);
+                    }
+                    
+                    // Last resort: generate a simple ID from store name
+                    if (!projectId) {
+                        projectId = store.name.split('/').pop() || crypto.randomUUID();
                     }
                 }
                 
                 allProjects.push({
                     id: projectId,
                     name: projectName,
+                    color: color,
                     ragStoreName: store.name,
                     displayName: store.displayName,
                     createdAt: store.createTime || new Date().toISOString(),
@@ -479,7 +573,24 @@ export async function listAllProjects(): Promise<Project[]> {
             }
         }
         
-        return allProjects;
+        // Remove duplicates by projectId (keep the one with more meetings or newer)
+        const uniqueProjects = new Map<string, typeof allProjects[0]>();
+        for (const project of allProjects) {
+            const existing = uniqueProjects.get(project.id);
+            if (!existing) {
+                uniqueProjects.set(project.id, project);
+            } else {
+                // Keep the project with more meetings, or the newer one if equal
+                if (project.meetingCount > existing.meetingCount ||
+                    (project.meetingCount === existing.meetingCount && 
+                     new Date(project.createdAt) > new Date(existing.createdAt))) {
+                    console.warn(`Duplicate project detected: ${project.id}, keeping newer/fuller version`);
+                    uniqueProjects.set(project.id, project);
+                }
+            }
+        }
+        
+        return Array.from(uniqueProjects.values());
     } catch (error) {
         console.error('Failed to list projects:', error);
         throw new Error(`Failed to list projects: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -490,30 +601,36 @@ export async function listAllProjects(): Promise<Project[]> {
  * Get or create a project's RAG store. Each project has its own dedicated RAG store.
  * This provides complete isolation between projects.
  */
-export async function getProjectRagStore(projectId: string, projectName?: string): Promise<string> {
+export async function getProjectRagStore(projectId: string, projectName?: string, color?: string): Promise<string> {
     ensureInitialized();
     
-    const displayName = `Project_${projectId}`;
+    // Create a UNIQUE display name using projectId to prevent duplicates
+    // Format: "Project_{projectId}" - this ensures uniqueness
+    const uniqueDisplayName = `Project_${projectId}`;
     
     try {
-        // Check if project already has a RAG store
+        // Check if project already has a RAG store by unique displayName
+        console.log(`[getProjectRagStore] Looking for RAG store: ${uniqueDisplayName}`);
         const ragStores = await listAllRagStores();
-        const existingStore = ragStores.find(store => store.displayName === displayName);
+        
+        // Search by the unique displayName first (fast and reliable)
+        const existingStore = ragStores.find(store => store.displayName === uniqueDisplayName);
         
         if (existingStore && existingStore.name) {
-            console.log(`Found existing RAG store for project ${projectId}: ${existingStore.name}`);
+            console.log(`[getProjectRagStore] ✓ Found existing RAG store: ${existingStore.name}`);
             return existingStore.name;
         }
         
-        // Create new RAG store for this project
-        const ragStoreName = await createRagStore(displayName);
-        console.log(`RAG store created for project ${projectId}: ${ragStoreName}`);
+        // Create new RAG store for this project with unique displayName
+        console.log(`[getProjectRagStore] Creating new RAG store: ${uniqueDisplayName}`);
+        const ragStoreName = await createRagStore(uniqueDisplayName);
+        console.log(`[getProjectRagStore] ✓ Created RAG store: ${ragStoreName}`);
         
-        // Save project name as metadata if provided
+        // Save project metadata if provided
         if (projectName) {
             let tempPath: string | null = null;
             try {
-                const metadata = { projectId, projectName, createdAt: new Date().toISOString() };
+                const metadata = { projectId, projectName, color, createdAt: new Date().toISOString() };
                 const fileName = '.project-metadata.json';
                 
                 tempPath = path.join(os.tmpdir(), `project-meta-${projectId}.json`);
@@ -521,13 +638,18 @@ export async function getProjectRagStore(projectId: string, projectName?: string
                 
                 const customMetadata = [
                     { key: 'projectName', stringValue: projectName },
+                    { key: 'projectId', stringValue: projectId },
                     { key: 'isMetadata', stringValue: 'true' }
                 ];
                 
+                if (color) {
+                    customMetadata.push({ key: 'color', stringValue: color });
+                }
+                
                 await uploadToRagStore(ragStoreName, tempPath, 'application/json', fileName, customMetadata);
-                console.log(`Project name metadata saved for ${projectName}`);
+                console.log(`Project metadata saved for ${projectName}`);
             } catch (metaError) {
-                console.warn(`Failed to save project name metadata:`, metaError);
+                console.warn(`Failed to save project metadata:`, metaError);
                 // Don't fail the whole operation if metadata save fails
             } finally {
                 if (tempPath) {

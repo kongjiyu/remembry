@@ -11,6 +11,7 @@ import Link from "next/link";
 interface Project {
     id: string;
     name: string;
+    color?: string;
     ragStoreName: string;
     displayName: string;
     createdAt: string;
@@ -266,7 +267,7 @@ export default function DashboardPage() {
                                             href={`/projects/${project.id}`}
                                             className="flex items-center gap-4 flex-1"
                                         >
-                                            <div className="size-10 rounded-lg bg-blue-500 flex items-center justify-center text-white">
+                                            <div className={`size-10 rounded-lg ${project.color || 'bg-blue-500'} flex items-center justify-center text-white`}>
                                                 <FolderKanban className="size-5" />
                                             </div>
                                             <div>

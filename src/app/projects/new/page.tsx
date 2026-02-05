@@ -6,20 +6,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { FolderKanban, Plus, Check } from "lucide-react";
+import { FolderKanban, Plus } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-
-const projectColors = [
-    { name: "Blue", class: "bg-blue-500" },
-    { name: "Purple", class: "bg-purple-500" },
-    { name: "Green", class: "bg-green-500" },
-    { name: "Orange", class: "bg-orange-500" },
-    { name: "Pink", class: "bg-pink-500" },
-    { name: "Red", class: "bg-red-500" },
-    { name: "Yellow", class: "bg-yellow-500" },
-    { name: "Cyan", class: "bg-cyan-500" },
-];
 
 export default function NewProjectPage() {
     const router = useRouter();
@@ -28,7 +17,6 @@ export default function NewProjectPage() {
     // Form state
     const [name, setName] = useState("");
     const [description, setDescription] = useState("");
-    const [selectedColor, setSelectedColor] = useState(projectColors[0].class);
     const [goals, setGoals] = useState("");
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -45,7 +33,6 @@ export default function NewProjectPage() {
                 body: JSON.stringify({
                     name,
                     description,
-                    color: selectedColor,
                     goals,
                 }),
             });
@@ -118,29 +105,6 @@ export default function NewProjectPage() {
                                     Optional: Add a brief description to help identify this project
                                 </p>
                             </div>
-
-                            {/* Project Color */}
-                            <div className="space-y-2">
-                                <label className="text-sm font-medium">Project Color</label>
-                                <div className="flex gap-2">
-                                    {projectColors.map((color) => (
-                                        <button
-                                            key={color.class}
-                                            type="button"
-                                            onClick={() => setSelectedColor(color.class)}
-                                            className={`size-10 rounded-lg ${color.class} relative hover:opacity-80 transition-opacity`}
-                                            title={color.name}
-                                        >
-                                            {selectedColor === color.class && (
-                                                <Check className="size-5 text-white absolute inset-0 m-auto" />
-                                            )}
-                                        </button>
-                                    ))}
-                                </div>
-                                <p className="text-xs text-muted-foreground">
-                                    Choose a color to help identify your project
-                                </p>
-                            </div>
                         </CardContent>
                     </Card>
 
@@ -179,7 +143,7 @@ export default function NewProjectPage() {
                         <CardContent>
                             <div className="border rounded-lg p-4">
                                 <div className="flex items-center gap-3">
-                                    <div className={`size-12 rounded-lg ${selectedColor} flex items-center justify-center text-white`}>
+                                    <div className="size-12 rounded-lg bg-blue-500 flex items-center justify-center text-white">
                                         <FolderKanban className="size-6" />
                                     </div>
                                     <div className="flex-1">

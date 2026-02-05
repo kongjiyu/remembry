@@ -42,7 +42,7 @@ export async function POST(request: NextRequest) {
         // Create a dedicated RAG store for this project
         let ragStoreName: string;
         try {
-            ragStoreName = await getProjectRagStore(projectId, name.trim());
+            ragStoreName = await getProjectRagStore(projectId, name.trim(), color);
         } catch (error) {
             console.error('Failed to create RAG store for project:', error);
             return NextResponse.json(
