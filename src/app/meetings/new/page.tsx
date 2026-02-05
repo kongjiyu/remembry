@@ -104,7 +104,7 @@ export default function NewMeetingPage() {
         }
     }, [shouldAutoSubmit, uploadedFile, selectedProject]);
 
-    const acceptedAudioFormats = ["audio/mp3", "audio/mpeg", "audio/wav", "audio/x-wav", "audio/m4a", "audio/x-m4a", "audio/webm", "audio/ogg"];
+    const acceptedAudioFormats = ["audio/mp3", "audio/mpeg", "audio/wav", "audio/x-wav", "audio/m4a", "audio/x-m4a", "audio/webm", "audio/ogg", "video/webm", "audio/mp4", "video/mp4"];
     const acceptedTextFormats = ["text/plain"];
 
     const handleFileSelect = async (file: File) => {
@@ -119,9 +119,9 @@ export default function NewMeetingPage() {
             return;
         }
 
-        // Check if it's an audio file
-        if (!acceptedAudioFormats.includes(file.type) && !file.name.match(/\.(mp3|wav|m4a|webm|ogg)$/i)) {
-            toast.error("Please upload an audio file (MP3, WAV, M4A, WebM) or text transcript (TXT)");
+        // Check if it's an audio/video file (WebM/MP4 may be reported as video)
+        if (!acceptedAudioFormats.includes(file.type) && !file.name.match(/\.(mp3|wav|m4a|webm|ogg|mp4)$/i)) {
+            toast.error("Please upload an audio file (MP3, WAV, M4A, WebM, MP4) or text transcript (TXT)");
             return;
         }
 
@@ -358,7 +358,7 @@ export default function NewMeetingPage() {
                             >
                                 <input
                                     type="file"
-                                    accept="audio/*,text/plain,.mp3,.wav,.m4a,.webm,.ogg,.txt"
+                                    accept="audio/*,video/webm,video/mp4,text/plain,.mp3,.wav,.m4a,.webm,.ogg,.mp4,.txt"
                                     onChange={(e) => e.target.files?.[0] && handleFileSelect(e.target.files[0])}
                                     className="hidden"
                                     id="file-upload"

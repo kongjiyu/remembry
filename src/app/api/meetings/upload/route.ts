@@ -82,10 +82,19 @@ export async function POST(request: NextRequest) {
         if (fileType !== 'text') {
             console.log(`Transcribing file: ${fileName}, size: ${file.size}, type: ${file.type}`);
             
+            // Normalize MIME type for Gemini API
+            // WebM files may be reported as video/webm by browsers, but Gemini accepts audio/webm
+            let mimeType = file.type || "audio/webm";
+            if (mimeType === "video/webm") {
+                mimeType = "audio/webm";
+            } else if (mimeType === "video/mp4") {
+                mimeType = "audio/mp4";
+            }
+            
             // Transcribe
             transcription = await transcribeAudio(
                 audioPath,
-                file.type || "audio/webm",
+                mimeType,
                 notes || undefined
             );
 
