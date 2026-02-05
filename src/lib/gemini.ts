@@ -123,10 +123,22 @@ export async function transcribeAudio(
     // Wait for the file to be active
     let file = await retryWithBackoff(async () => await genAI.files.get({ name: fileName }));
     
+    // Polling loop with robust error handling for 500s during processing
     while (file.state === "PROCESSING") {
         console.log("File is processing...");
-        await sleep(2000);
-        file = await retryWithBackoff(async () => await genAI.files.get({ name: fileName }));
+        await sleep(5000); // Check every 5 seconds for larger files
+        
+        try {
+            file = await genAI.files.get({ name: fileName });
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        } catch (error: any) {
+            // Ignore transient 500 errors during polling, just keep waiting
+            if (error.message?.includes("500") || error.message?.includes("INTERNAL") || error.message?.includes("json")) {
+                console.warn("Transient API error during polling, continuing...", error.message);
+                continue;
+            }
+            throw error; // Rethrow other errors (e.g. 404, 403)
+        }
     }
 
     if (file.state === "FAILED") {

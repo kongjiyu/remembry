@@ -50,9 +50,10 @@ function formatFileSize(bytes: number): string {
 }
 
 function formatDuration(seconds: number): string {
+    if (!Number.isFinite(seconds) || isNaN(seconds)) return "--:--";
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
-    return `${mins}:${secs.toString().padStart(2, "0")}`;
+    return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
 }
 
 export default function NewMeetingPage() {
@@ -129,11 +130,12 @@ export default function NewMeetingPage() {
         // Get audio duration
         const audio = new Audio(url);
         audio.addEventListener("loadedmetadata", () => {
+            const duration = Number.isFinite(audio.duration) ? Math.floor(audio.duration) : undefined;
             setUploadedFile({
                 file,
                 name: file.name,
                 size: file.size,
-                duration: Math.floor(audio.duration),
+                duration: duration,
                 url,
                 fileType: "audio",
             });
