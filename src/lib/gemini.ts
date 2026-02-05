@@ -121,7 +121,7 @@ export async function transcribeAudio(
     console.log(`File uploaded: ${fileUri} (${fileName})`);
 
     // Wait for the file to be active
-    let file = await retryWithBackoff(async () => await genAI.files.get({ name: fileName }));
+    let file = await genAI.files.get({ name: fileName });
     
     // Polling loop with robust error handling for 500s during processing
     while (file.state === "PROCESSING") {
