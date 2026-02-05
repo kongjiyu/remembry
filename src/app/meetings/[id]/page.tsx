@@ -571,36 +571,6 @@ export default async function MeetingDetailPage({
                         </Card>
                     </TabsContent>
                 </Tabs>
-
-                {/* Debug Info */}
-                {transcription.debug && (
-                    <Card>
-                        <CardHeader>
-                            <CardTitle className="text-lg">Debug Info</CardTitle>
-                            <CardDescription>
-                                API Request and Response Details
-                            </CardDescription>
-                        </CardHeader>
-                        <CardContent className="space-y-4">
-                            <div>
-                                <h4 className="font-semibold mb-2">Request Prompt</h4>
-                                <div className="bg-muted p-4 rounded-md overflow-x-auto">
-                                    <pre className="text-xs whitespace-pre-wrap font-mono">
-                                        {transcription.debug.prompt}
-                                    </pre>
-                                </div>
-                            </div>
-                            <div>
-                                <h4 className="font-semibold mb-2">Raw Response</h4>
-                                <div className="bg-muted p-4 rounded-md overflow-x-auto">
-                                    <pre className="text-xs whitespace-pre-wrap font-mono">
-                                        {transcription.debug.response}
-                                    </pre>
-                                </div>
-                            </div>
-                        </CardContent>
-                    </Card>
-                )}
             </div>
         </DashboardLayout>
     );

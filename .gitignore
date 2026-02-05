@@ -40,5 +40,5 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-#uplaods file
-/uplaods
+# uploads folder
+/uploads
