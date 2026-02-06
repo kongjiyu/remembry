@@ -21,6 +21,8 @@ export async function POST(request: NextRequest) {
         const projectName = formData.get('projectName') as string;
         const fileType = formData.get('fileType') as string;
         const duration = formData.get('duration') as string;
+        const notesLanguagesRaw = formData.get('notesLanguages') as string;
+        const notesLanguages: string[] = notesLanguagesRaw ? JSON.parse(notesLanguagesRaw) : ['en'];
 
         // Validate required fields
         if (!file) {
@@ -116,10 +118,30 @@ export async function POST(request: NextRequest) {
             const transcriptContent = `Title: ${title || file.name}\nDate: ${new Date().toISOString()}\nParticipants: ${participants || 'N/A'}\n\n${transcription.text}`;
             await writeFile(transcriptPath, transcriptContent);
 
-            // Extract Notes
-            generatedNotes = await extractMeetingNotes(transcription.text, notes || undefined);
-            const notesPath = path.join(uploadsDir, "notes.json");
+            // Extract Notes in each requested language
+            const generatedNotesMap: Record<string, any> = {};
+            for (const lang of notesLanguages) {
+                console.log(`Generating notes in language: ${lang}`);
+                const langNotes = await extractMeetingNotes(transcription.text, notes || undefined, lang);
+                generatedNotesMap[lang] = langNotes;
+                
+                // Save language-specific notes
+                const langNotesPath = path.join(uploadsDir, `notes-${lang}.json`);
+                await writeFile(langNotesPath, JSON.stringify(langNotes, null, 2));
+            }
+            
+            // Save the first language as default notes.json for backwards compatibility
+            generatedNotes = generatedNotesMap[notesLanguages[0]];
+            const notesPath = path.join(uploadsDir, `notes.json`);
             await writeFile(notesPath, JSON.stringify(generatedNotes, null, 2));
+            
+            // Save metadata about available languages
+            const metadataPath = path.join(uploadsDir, "metadata.json");
+            await writeFile(metadataPath, JSON.stringify({
+                availableLanguages: notesLanguages,
+                defaultLanguage: notesLanguages[0],
+                createdAt: new Date().toISOString()
+            }, null, 2));
         }
 
         // --- Feature: RAG Store Upload ---

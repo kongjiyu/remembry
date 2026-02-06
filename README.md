@@ -1,16 +1,16 @@
-# Remembry - AI Meeting Notes to Notion
+# Remembry - AI Meeting Notes
 
 > **Version:** 1.0  
 > **Status:** In Development
 
-An intelligent platform that transforms meeting recordings into structured, actionable meeting notes automatically synced to Notion. Powered by Gemini AI for transcription, intelligent extraction, and semantic search.
+An intelligent platform that transforms meeting recordings into structured, actionable meeting notes. Powered by Gemini AI for transcription, intelligent extraction, and semantic search.
 
 ## 🎯 Vision
 
 Automatically convert meeting recordings into comprehensive notes with:
 - **Accurate transcription** with speaker diarization
 - **Smart extraction** of decisions, action items, and Q&A pairs
-- **Automatic Notion sync** to your workspace
+- **Multi-language support** for meeting notes output
 - **Semantic search** across all your meetings
 
 ## 🔄 Core User Flow
@@ -18,7 +18,7 @@ Automatically convert meeting recordings into comprehensive notes with:
 ```
 Record/Upload Audio → Transcription (Speaker Diarization) → AI Processing (Gemini 3)
        ↓                                                              ↓
-   Save to RAG ← Meeting Notes + Tasks (Markdown) → Sync to Notion
+   Save to RAG ←────────────── Meeting Notes + Tasks (Markdown)
 ```
 
 ## 🛠️ Tech Stack
@@ -26,79 +26,61 @@ Record/Upload Audio → Transcription (Speaker Diarization) → AI Processing (G
 ### Frontend
 - **Framework:** Next.js 14+ (App Router)
 - **Styling:** Tailwind CSS + shadcn/ui
-- **State Management:** Zustand or React Context
-- **Authentication:** Auth.js (NextAuth.js v5)
-- **File Upload:** react-dropzone + presigned URLs
+- **State Management:** React Context
+- **File Upload:** Native file input + drag-and-drop
 
 ### Backend
-- **Framework:** Node.js + Express or NestJS
-- **Database:** Google Firestore
-- **Queue/Jobs:** BullMQ (Redis) or Cloud Tasks
-- **Deployment:** Google Cloud Run
-- **Storage:** Google Cloud Storage
+- **Framework:** Next.js API Routes
+- **Storage:** Local file system (uploads/)
 
 ### AI & Services
 - **Transcription:** Gemini 3 Flash (with auto-chunking for long files)
 - **AI Processing:** Gemini 3 Flash/Pro (structured output extraction)
-- **RAG Search:** Gemini File Search (semantic search across meetings)
-- **Integrations:** Notion API via OAuth 2.0
+- **RAG Search:** Vertex AI RAG Store (semantic search across meetings)
 
 ## 📋 Key Features
 
-### Module 1: Authentication & User Management
-- User registration/login via email or OAuth (Google)
-- Notion OAuth integration (connect workspace)
-- User profile management
-- Workspace/team support (future)
-
-### Module 2: Audio Ingestion
-- Upload audio files (MP3, WAV, M4A, WebM)
+### Module 1: Audio Ingestion
+- Upload audio files (MP3, WAV, M4A, WebM, MP4)
 - **In-browser audio recording** with microphone access
   - Start/stop/pause/resume recording controls
   - Real-time duration display
   - Audio playback preview before submission
-  - Supported browsers: Chrome, Firefox, Edge (Safari with limitations)
-- Meeting metadata input (title, date, participants)
+- Meeting metadata input (title, project, notes)
 - Upload progress indicator
-- Audio file validation (size, format, duration)
+- Audio file validation (size, format)
 
-### Module 3: Transcription
+### Module 2: Transcription
 - Automatic transcription using **Gemini 3 Flash**
-- **Audio chunking** for large files (>10MB split into 10-min segments)
-- Multi-speaker diarization with name detection
-- Multi-language support with auto-translation
-- Important word/phrase highlighting
+- **Audio chunking** for large files
+- Multi-speaker diarization
+- Multi-language support
 - Real-time processing status updates
 
-### Module 4: AI Extraction
+### Module 3: AI Extraction
 - Generate meeting summary
-- Extract decisions made (with context and decision-maker)
-- Extract action items (with owners and due dates)
-- Extract Q&A pairs (who asked, who answered)
-- Speaker-to-participant mapping
-- Validation layer before Notion sync
+- Extract decisions made
+- Extract action items
+- Extract Q&A pairs
+- Extract key topics and assumptions
+- **Multi-language notes output** - generate notes in multiple languages simultaneously
 
-### Module 5: Notion Sync
-- OAuth connection to Notion workspace
-- Database discovery (Meeting Notes / Tasks DBs)
-- Create meeting note pages
-- Append content blocks (chunked for rate limits)
-- Create/update task items
-- Rate limiting (max 3 req/sec) with retry logic
-
-### Module 6: RAG Search (Gemini File Search)
+### Module 4: RAG Search (Vertex AI)
 - Semantic search across all meetings
 - "When did we decide X?" queries with source citations
-- "What are my overdue action items?" queries
-- Deep links to Notion pages in responses
-- No separate vector database needed
+- Project-based organization
+- Deep links to meeting details
+
+### Module 5: Projects
+- Organize meetings by project
+- Each project has its own RAG store
+- Project-level search and analytics
 
 ## 🚀 Getting Started
 
 ### Prerequisites
 - Node.js 18+
-- Google Cloud account (for Gemini API, Firestore, Cloud Storage)
-- Notion account with API access
+- Google Cloud account (for Gemini API and Vertex AI)
 
 ### Installation
 
@@ -119,22 +101,14 @@ Open [http://localhost:3000](http://localhost:3000) to see the application.
 ### Environment Variables
 
 ```bash
-# Google Cloud
+# Google Cloud / Gemini
+GEMINI_API_KEY=your-gemini-api-key
 GOOGLE_CLOUD_PROJECT=your-project-id
 GOOGLE_APPLICATION_CREDENTIALS=path/to/service-account.json
-GEMINI_API_KEY=your-gemini-api-key
 
-# Notion
-NOTION_CLIENT_ID=your-notion-client-id
-NOTION_CLIENT_SECRET=your-notion-client-secret
-NOTION_REDIRECT_URI=http://localhost:3000/api/auth/notion/callback
-
-# Authentication
+# Authentication (optional)
 NEXTAUTH_URL=http://localhost:3000
 NEXTAUTH_SECRET=your-secret-key
-
-# Redis (for BullMQ)
-REDIS_URL=redis://localhost:6379
 ```
 
 ## 📁 Project Structure
@@ -143,59 +117,42 @@ REDIS_URL=redis://localhost:6379
 remembry/
 ├── src/
 │   ├── app/                    # Next.js App Router pages
+│   │   ├── api/                # API routes
+│   │   │   ├── meetings/       # Meeting CRUD and upload
+│   │   │   ├── projects/       # Project management
+│   │   │   ├── search/         # Search API
+│   │   │   └── ask/            # AI Q&A endpoint
 │   │   ├── dashboard/          # Dashboard view
 │   │   ├── meetings/           # Meeting list and details
-│   │   │   └── new/            # Upload new meeting
+│   │   │   ├── new/            # Upload new meeting
+│   │   │   └── [id]/           # Meeting detail view
+│   │   ├── projects/           # Project management
 │   │   ├── search/             # Search across meetings
-│   │   └── settings/           # Settings and integrations
-│   │       └── notion/         # Notion connection
+│   │   └── settings/           # App settings
 │   ├── components/
-│   │   ├── layout/             # Layout components
+│   │   ├── layout/             # Layout components (sidebar, dashboard)
 │   │   └── ui/                 # shadcn/ui components
 │   ├── hooks/                  # Custom React hooks
-│   └── lib/                    # Utility functions
+│   └── lib/                    # Utility functions (gemini.ts, fileSearch.ts)
+├── uploads/                    # Local meeting storage
 ├── public/                     # Static assets
 └── package.json
 ```
 
-## 📚 Reference Implementations
-
-- **Transcription Pattern:** See `testTranscript/src/components/GeminiTranscript.tsx` for working audio chunking implementation
-- **Notion Integration:** See `testNotion/` for Notion API examples
-
 ## 🎯 Development Roadmap
 
 ### Phase 1: MVP (Current)
-- [ ] Frontend: Basic UI with meeting upload
-- [ ] Backend: Audio transcription with Gemini
-- [ ] AI extraction of meeting notes
-- [ ] Notion OAuth integration
-- [ ] Basic meeting list and details view
+- [x] Frontend: Basic UI with meeting upload
+- [x] Backend: Audio transcription with Gemini
+- [x] AI extraction of meeting notes
+- [x] Multi-language notes support
+- [x] Basic meeting list and details view
+- [x] Project-based organization
+- [x] RAG-based semantic search
 
 ### Phase 2: Enhanced Features
-- [ ] Advanced search with Gemini File Search
+- [ ] Advanced analytics and insights
 - [ ] Action item tracking and notifications
-- [ ] Multi-language support with translation
 - [ ] Improved speaker diarization
 - [ ] Meeting templates
-
-### Phase 3: Team Features
-- [ ] Workspace/team support
-- [ ] Shared meetings and notes
-- [ ] Role-based access control
-- [ ] Analytics and insights
-
-## 🤝 Contributing
-
-This is a hackathon project. For major changes, please open an issue first to discuss what you would like to change.
-
-## 📝 License
-
-This project is part of the Gemini Hackathon.
-
-## 🔗 Links
-
-- [Project Planning Document](../planning.md) - Detailed technical specifications
-- [Notion API Documentation](https://developers.notion.com/)
-- [Gemini API Documentation](https://ai.google.dev/docs)
-- [Next.js Documentation](https://nextjs.org/docs)
+- [ ] Team collaboration features

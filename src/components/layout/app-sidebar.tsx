@@ -27,7 +27,6 @@ import {
 import {
     LayoutDashboard,
     Mic,
-    FileText,
     Search,
     Settings,
     LogOut,
@@ -170,12 +169,6 @@ export function AppSidebar() {
                                     <Link href="/settings" className="cursor-pointer">
                                         <Settings className="mr-2 size-4" />
                                         Settings
-                                    </Link>
-                                </DropdownMenuItem>
-                                <DropdownMenuItem asChild>
-                                    <Link href="/settings/notion" className="cursor-pointer">
-                                        <FileText className="mr-2 size-4" />
-                                        Connect Notion
                                     </Link>
                                 </DropdownMenuItem>
                                 <DropdownMenuSeparator />

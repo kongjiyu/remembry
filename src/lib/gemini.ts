@@ -255,29 +255,62 @@ export interface MeetingNotes {
     decisions: string[];
     assumptions: string[];
     qa: Array<{ question: string; answer: string }>;
+    language?: string; // Language code of the notes
 }
+
+// Supported languages for meeting notes
+export const SUPPORTED_LANGUAGES = [
+    { code: 'en', name: 'English' },
+    { code: 'zh', name: '中文 (Chinese)' },
+    { code: 'ms', name: 'Bahasa Melayu' },
+    { code: 'ja', name: '日本語 (Japanese)' },
+    { code: 'ko', name: '한국어 (Korean)' },
+    { code: 'es', name: 'Español (Spanish)' },
+    { code: 'fr', name: 'Français (French)' },
+    { code: 'de', name: 'Deutsch (German)' },
+    { code: 'pt', name: 'Português (Portuguese)' },
+    { code: 'th', name: 'ไทย (Thai)' },
+    { code: 'vi', name: 'Tiếng Việt (Vietnamese)' },
+    { code: 'id', name: 'Bahasa Indonesia' },
+] as const;
+
+export type SupportedLanguageCode = typeof SUPPORTED_LANGUAGES[number]['code'];
 
 /**
  * Extract meeting notes (summary, action items, decisions, Q&A) from transcription
+ * @param transcriptionText - The transcription text to analyze
+ * @param context - Additional context about the meeting
+ * @param targetLanguage - Target language code for the notes output (default: 'en')
  */
-export async function extractMeetingNotes(transcriptionText: string, context?: string): Promise<MeetingNotes> {
+export async function extractMeetingNotes(
+    transcriptionText: string, 
+    context?: string,
+    targetLanguage: string = 'en'
+): Promise<MeetingNotes> {
     const additionalContext = context 
         ? `\nAdditional Context: "${context}"` 
         : "";
 
+    const languageName = SUPPORTED_LANGUAGES.find(l => l.code === targetLanguage)?.name || 'English';
+
     const prompt = `You are an expert meeting secretary. Please analyze the following meeting transcription and extract key information.
+
+**IMPORTANT OUTPUT LANGUAGE INSTRUCTION**: 
+- Output ALL content in ${languageName} (${targetLanguage}).
+- EXCEPTION: Keep technical terms, product names, code snippets, proper nouns, and domain-specific jargon in their ORIGINAL language.
+- For example: "GitHub", "API", "database", "React", etc. should remain unchanged.
 
 Transcription:
 "${transcriptionText}"
 ${additionalContext}
 
-Please provide the following outputs in JSON format:
-1. **summary**: A concise executive summary of the meeting (2-3 paragraphs).
-2. **keyTopics**: A list of the main topics or themes discussed in the meeting.
-3. **actionItems**: A list of actionable tasks assigned to specific people (include the assignee if known).
-4. **decisions**: A list of key decisions made during the meeting.
-5. **assumptions**: A list of explicit or implicit assumptions made during the discussion.
-6. **qa**: A list of important questions asked and their answers.
+Please provide the following outputs in JSON format (remember to write in ${languageName}):
+1. **summary**: A concise executive summary of the meeting (2-3 paragraphs) in ${languageName}.
+2. **keyTopics**: A list of the main topics or themes discussed in the meeting in ${languageName}.
+3. **actionItems**: A list of actionable tasks assigned to specific people (include the assignee if known) in ${languageName}.
+4. **decisions**: A list of key decisions made during the meeting in ${languageName}.
+5. **assumptions**: A list of explicit or implicit assumptions made during the discussion in ${languageName}.
+6. **qa**: A list of important questions asked and their answers in ${languageName}.
 
 Format:
 {
@@ -311,7 +344,11 @@ Return ONLY the JSON object.`;
         if (jsonMatch) {
             jsonStr = jsonMatch[1].trim();
         }
-        return JSON.parse(jsonStr);
+        const parsed = JSON.parse(jsonStr);
+        return {
+            ...parsed,
+            language: targetLanguage
+        };
     } catch (e) {
         console.error("Failed to parse meeting notes JSON", e);
         return {
@@ -320,7 +357,8 @@ Return ONLY the JSON object.`;
             actionItems: [],
             decisions: [],
             assumptions: [],
-            qa: []
+            qa: [],
+            language: targetLanguage
         };
     }
 }

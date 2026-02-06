@@ -14,9 +14,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Remembry - AI Meeting Notes to Notion",
-  description: "Transform your meeting recordings into structured, actionable notes automatically synced to Notion.",
-  keywords: ["meeting notes", "AI", "transcription", "Notion", "productivity"],
+  title: "Remembry - AI Meeting Notes",
+  description: "Transform your meeting recordings into structured, actionable notes powered by AI.",
+  keywords: ["meeting notes", "AI", "transcription", "productivity"],
 };
 
 export default function RootLayout({

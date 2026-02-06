@@ -362,26 +362,6 @@ export default function DashboardPage() {
                         )}
                     </CardContent>
                 </Card>
-
-                {/* Notion Connection Status */}
-                <Card className="border-dashed">
-                    <CardContent className="flex items-center justify-between p-6">
-                        <div className="flex items-center gap-4">
-                            <div className="flex size-12 items-center justify-center rounded-lg bg-muted">
-                                <AlertCircle className="size-6 text-muted-foreground" />
-                            </div>
-                            <div>
-                                <h3 className="font-medium">Connect Notion</h3>
-                                <p className="text-sm text-muted-foreground">
-                                    Link your Notion workspace to sync meeting notes automatically
-                                </p>
-                            </div>
-                        </div>
-                        <Button asChild>
-                            <Link href="/settings/notion">Connect</Link>
-                        </Button>
-                    </CardContent>
-                </Card>
             </div>
         </DashboardLayout>
     );

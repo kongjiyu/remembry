@@ -3,23 +3,18 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { MeetingNotesDisplay } from "@/components/ui/meeting-notes-display";
 import { 
     Mic, 
     Clock, 
-    Users, 
     FileText, 
     Download, 
     Share2, 
     CheckCircle2,
     MessageSquare,
-    ChevronRight,
-    ListTodo,
-    Gavel,
-    Lightbulb,
-    Hash,
-    HelpCircle,
     ArrowLeft,
-    FolderKanban
+    FolderKanban,
+    Hash
 } from "lucide-react";
 import { readFile } from "fs/promises";
 import { existsSync } from "fs";
@@ -210,6 +205,30 @@ export default async function MeetingDetailPage({
     const pId = Array.isArray(projectId) ? projectId[0] : projectId;
     const pName = Array.isArray(projectName) ? projectName[0] : projectName;
 
+    // Calculate actual duration from segments if available, otherwise estimate from text
+    const calculateDuration = () => {
+        // Try to get duration from last segment's endTime
+        if (transcription.segments.length > 0) {
+            const lastSegment = transcription.segments[transcription.segments.length - 1];
+            if (lastSegment.endTime && lastSegment.endTime > 0) {
+                return lastSegment.endTime;
+            }
+        }
+        // If duration is set and valid, use it
+        if (transcription.duration > 0) {
+            return transcription.duration;
+        }
+        // Estimate ~150 words per minute for speech, average 5 chars per word
+        const estimatedWords = transcription.text.length / 5;
+        const estimatedMinutes = estimatedWords / 150;
+        return estimatedMinutes * 60; // Return seconds
+    };
+
+    // Calculate word count for display
+    const wordCount = transcription.text.trim().split(/\s+/).filter(w => w.length > 0).length;
+    
+    const actualDuration = calculateDuration();
+
     return (
         <DashboardLayout
             breadcrumbs={[
@@ -220,40 +239,40 @@ export default async function MeetingDetailPage({
             title={meeting.title}
         >
             <div className="space-y-6">
-                {/* Header Actions */}
+                {/* Back Button */}
+                <Button variant="outline" size="sm" asChild>
+                    <Link href={pId ? `/projects/${pId}` : "/meetings"}>
+                        <ArrowLeft className="size-4 mr-2" />
+                        {pId ? "Back to Project" : "Back to Meetings"}
+                    </Link>
+                </Button>
+
+                {/* Header */}
                 <div className="flex flex-col sm:flex-row gap-4 justify-between">
                     <div className="flex items-center gap-4">
-                        <Button variant="outline" size="sm" asChild className="shrink-0">
-                            <Link href={pId ? `/projects/${pId}` : "/meetings"}>
-                                <ArrowLeft className="size-4 mr-2" />
-                                {pId ? "Back to Project" : "Back to Meetings"}
-                            </Link>
-                        </Button>
-                        <div className="flex items-center gap-4">
-                            <div className="flex size-12 items-center justify-center rounded-lg bg-primary/10 shrink-0">
-                                <Mic className="size-6 text-primary" />
-                            </div>
-                            <div>
-                                <h1 className="text-2xl font-bold line-clamp-1">{meeting.title}</h1>
-                                <div className="flex items-center gap-2 text-muted-foreground text-sm">
-                                    <span>
-                                        {new Date(meeting.createdAt).toLocaleDateString("en-US", {
-                                            weekday: "long",
-                                            year: "numeric",
-                                            month: "long",
-                                            day: "numeric",
-                                        })}
-                                    </span>
-                                    {pName && (
-                                        <>
-                                            <span>•</span>
-                                            <span className="flex items-center gap-1">
-                                                <FolderKanban className="size-3" />
-                                                {pName}
-                                            </span>
-                                        </>
-                                    )}
-                                </div>
+                        <div className="flex size-12 items-center justify-center rounded-lg bg-primary/10 shrink-0">
+                            <Mic className="size-6 text-primary" />
+                        </div>
+                        <div>
+                            <h1 className="text-2xl font-bold line-clamp-1">{meeting.title}</h1>
+                            <div className="flex items-center gap-2 text-muted-foreground text-sm">
+                                <span>
+                                    {new Date(meeting.createdAt).toLocaleDateString("en-US", {
+                                        weekday: "long",
+                                        year: "numeric",
+                                        month: "long",
+                                        day: "numeric",
+                                    })}
+                                </span>
+                                {pName && (
+                                    <>
+                                        <span>•</span>
+                                        <span className="flex items-center gap-1">
+                                            <FolderKanban className="size-3" />
+                                            {pName}
+                                        </span>
+                                    </>
+                                )}
                             </div>
                         </div>
                     </div>
@@ -279,7 +298,7 @@ export default async function MeetingDetailPage({
                             <div>
                                 <p className="text-sm text-muted-foreground">Duration</p>
                                 <p className="text-lg font-semibold">
-                                    {formatDuration(transcription.duration)}
+                                    {actualDuration > 0 ? formatDuration(actualDuration) : "—"}
                                 </p>
                             </div>
                         </CardContent>
@@ -287,12 +306,12 @@ export default async function MeetingDetailPage({
                     <Card>
                         <CardContent className="flex items-center gap-3 p-4">
                             <div className="flex size-10 items-center justify-center rounded-lg bg-green-500/10">
-                                <Users className="size-5 text-green-500" />
+                                <FileText className="size-5 text-green-500" />
                             </div>
                             <div>
-                                <p className="text-sm text-muted-foreground">Speakers</p>
+                                <p className="text-sm text-muted-foreground">Words</p>
                                 <p className="text-lg font-semibold">
-                                    {transcription.speakers.length}
+                                    {wordCount.toLocaleString()}
                                 </p>
                             </div>
                         </CardContent>
@@ -305,7 +324,7 @@ export default async function MeetingDetailPage({
                             <div>
                                 <p className="text-sm text-muted-foreground">Segments</p>
                                 <p className="text-lg font-semibold">
-                                    {transcription.segments.length}
+                                    {transcription.segments.length > 0 ? transcription.segments.length : "1"}
                                 </p>
                             </div>
                         </CardContent>
@@ -313,7 +332,7 @@ export default async function MeetingDetailPage({
                     <Card>
                         <CardContent className="flex items-center gap-3 p-4">
                             <div className="flex size-10 items-center justify-center rounded-lg bg-orange-500/10">
-                                <FileText className="size-5 text-orange-500" />
+                                <Hash className="size-5 text-orange-500" />
                             </div>
                             <div>
                                 <p className="text-sm text-muted-foreground">Language</p>
@@ -338,164 +357,11 @@ export default async function MeetingDetailPage({
                     </TabsList>
 
                     <TabsContent value="notes" className="space-y-6">
-                        {notes ? (
-                            <>
-                                {/* Summary */}
-                                <Card>
-                                    <CardHeader>
-                                        <CardTitle className="flex items-center gap-2">
-                                            <FileText className="size-5 text-blue-500" />
-                                            Executive Summary
-                                        </CardTitle>
-                                    </CardHeader>
-                                    <CardContent>
-                                        <div className="prose prose-sm max-w-none dark:prose-invert">
-                                            <p className="whitespace-pre-wrap leading-relaxed">{notes.summary}</p>
-                                        </div>
-                                    </CardContent>
-                                </Card>
-
-                                <div className="grid gap-6 md:grid-cols-2">
-                                    {/* Key Topics */}
-                                    <Card>
-                                        <CardHeader>
-                                            <CardTitle className="flex items-center gap-2">
-                                                <Hash className="size-5 text-indigo-500" />
-                                                Key Topics
-                                            </CardTitle>
-                                        </CardHeader>
-                                        <CardContent>
-                                            {notes.keyTopics && notes.keyTopics.length > 0 ? (
-                                                <ul className="space-y-2">
-                                                    {notes.keyTopics.map((item, i) => (
-                                                        <li key={i} className="flex gap-3 text-sm">
-                                                            <div className="mt-1 size-1.5 rounded-full bg-indigo-500 shrink-0" />
-                                                            <span>{item}</span>
-                                                        </li>
-                                                    ))}
-                                                </ul>
-                                            ) : (
-                                                <p className="text-sm text-muted-foreground italic">No key topics detected.</p>
-                                            )}
-                                        </CardContent>
-                                    </Card>
-
-                                    {/* Action Items */}
-                                    <Card>
-                                        <CardHeader>
-                                            <CardTitle className="flex items-center gap-2">
-                                                <ListTodo className="size-5 text-green-500" />
-                                                Action Items
-                                            </CardTitle>
-                                        </CardHeader>
-                                        <CardContent>
-                                            {notes.actionItems && notes.actionItems.length > 0 ? (
-                                                <ul className="space-y-2">
-                                                    {notes.actionItems.map((item, i) => (
-                                                        <li key={i} className="flex gap-3 text-sm">
-                                                            <div className="mt-1 size-1.5 rounded-full bg-green-500 shrink-0" />
-                                                            <span>{item}</span>
-                                                        </li>
-                                                    ))}
-                                                </ul>
-                                            ) : (
-                                                <p className="text-sm text-muted-foreground italic">No action items detected.</p>
-                                            )}
-                                        </CardContent>
-                                    </Card>
-
-                                    {/* Decisions */}
-                                    <Card>
-                                        <CardHeader>
-                                            <CardTitle className="flex items-center gap-2">
-                                                <Gavel className="size-5 text-orange-500" />
-                                                Key Decisions
-                                            </CardTitle>
-                                        </CardHeader>
-                                        <CardContent>
-                                            {notes.decisions && notes.decisions.length > 0 ? (
-                                                <ul className="space-y-2">
-                                                    {notes.decisions.map((item, i) => (
-                                                        <li key={i} className="flex gap-3 text-sm">
-                                                            <div className="mt-1 size-1.5 rounded-full bg-orange-500 shrink-0" />
-                                                            <span>{item}</span>
-                                                        </li>
-                                                    ))}
-                                                </ul>
-                                            ) : (
-                                                <p className="text-sm text-muted-foreground italic">No decisions detected.</p>
-                                            )}
-                                        </CardContent>
-                                    </Card>
-
-                                    {/* Assumptions */}
-                                    <Card>
-                                        <CardHeader>
-                                            <CardTitle className="flex items-center gap-2">
-                                                <Lightbulb className="size-5 text-yellow-500" />
-                                                Assumptions
-                                            </CardTitle>
-                                        </CardHeader>
-                                        <CardContent>
-                                            {notes.assumptions && notes.assumptions.length > 0 ? (
-                                                <ul className="space-y-2">
-                                                    {notes.assumptions.map((item, i) => (
-                                                        <li key={i} className="flex gap-3 text-sm">
-                                                            <div className="mt-1 size-1.5 rounded-full bg-yellow-500 shrink-0" />
-                                                            <span>{item}</span>
-                                                        </li>
-                                                    ))}
-                                                </ul>
-                                            ) : (
-                                                <p className="text-sm text-muted-foreground italic">No assumptions detected.</p>
-                                            )}
-                                        </CardContent>
-                                    </Card>
-                                </div>
-
-                                {/* Q&A */}
-                                {notes.qa && notes.qa.length > 0 && (
-                                    <Card>
-                                        <CardHeader>
-                                            <CardTitle className="flex items-center gap-2">
-                                                <HelpCircle className="size-5 text-purple-500" />
-                                                Q&A
-                                            </CardTitle>
-                                        </CardHeader>
-                                        <CardContent>
-                                            <div className="space-y-4">
-                                                {notes.qa.map((qa, i) => (
-                                                    <div key={i} className="space-y-1">
-                                                        <p className="font-medium text-sm text-primary">Q: {qa.question}</p>
-                                                        <p className="text-sm text-muted-foreground">A: {qa.answer}</p>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        </CardContent>
-                                    </Card>
-                                )}
-                            </>
-                        ) : (
-                             <Card className="border-dashed">
-                                <CardContent className="flex flex-col items-center justify-center p-12 text-center space-y-4">
-                                    <div className="flex size-16 items-center justify-center rounded-full bg-primary/10">
-                                        <FileText className="size-8 text-primary" />
-                                    </div>
-                                    <div>
-                                        <h3 className="text-lg font-medium">No Notes Generated Yet</h3>
-                                        <p className="text-muted-foreground max-w-sm mx-auto">
-                                            The notes for this meeting haven't been generated or are currently processing.
-                                        </p>
-                                    </div>
-                                    <Button asChild>
-                                        <Link href={`/meetings/${id}/extract`}>
-                                            Generate Notes
-                                            <ChevronRight className="size-4 ml-1" />
-                                        </Link>
-                                    </Button>
-                                </CardContent>
-                            </Card>
-                        )}
+                        <MeetingNotesDisplay 
+                            meetingId={id}
+                            initialNotes={notes || null}
+                            initialLanguage={transcription.language || 'en'}
+                        />
                     </TabsContent>
 
                     <TabsContent value="transcript" className="space-y-6">
