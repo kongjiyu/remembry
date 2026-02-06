@@ -27,8 +27,8 @@ interface Message {
 
 function AskQuestionContent() {
     const searchParams = useSearchParams();
-    const [projectName, setProjectName] = useState<string | null>(null); // RAG store resource name
-    const [displayName, setDisplayName] = useState<string | null>(null); // User-entered project name
+    const [projectName, setProjectName] = useState<string | null>(null);
+    const [displayName, setDisplayName] = useState<string | null>(null);
     
     const [messages, setMessages] = useState<Message[]>([]);
     const [input, setInput] = useState("");
@@ -88,7 +88,7 @@ function AskQuestionContent() {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                    projectName,  // RAG store resource name
+                    projectName,
                     question: messageText
                 })
             });

@@ -7,7 +7,7 @@ initialize();
 export async function POST(request: NextRequest) {
     try {
         const body = await request.json();
-        const { projectName, question } = body; // projectName is RAG store resource name
+        const { projectName, question } = body;
 
         console.log("Ask query received:", { projectName, questionLength: question?.length });
 
@@ -18,7 +18,7 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        // projectName IS the RAG store name - use it directly
+        // Use projectName directly as the RAG store name
         const ragStoreName = projectName;
         
         // Simplified query - no need for project filtering since each project has its own store

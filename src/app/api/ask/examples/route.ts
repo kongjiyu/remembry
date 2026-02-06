@@ -7,7 +7,7 @@ initialize();
 export async function GET(request: NextRequest) {
     try {
         const searchParams = request.nextUrl.searchParams;
-        const projectName = searchParams.get("projectName"); // RAG store resource name
+        const projectName = searchParams.get("projectName");
 
         if (!projectName) {
             return NextResponse.json(
@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
             );
         }
 
-        // projectName IS the RAG store name - use it directly
+        // Use projectName directly as the RAG store name
         const ragStoreName = projectName;
         
         // Generate example questions for the project

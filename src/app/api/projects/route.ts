@@ -36,9 +36,7 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        // Create a dedicated RAG store for this project
-        // The displayName is the user-entered project name
-        // The API will return the unique resource name (e.g., fileSearchStores/abc-123)
+        // Create a dedicated RAG store for this project (returns the RAG store resource name)
         let projectName: string;
         try {
             projectName = await getProjectRagStore(undefined, name.trim(), color);
@@ -52,7 +50,7 @@ export async function POST(request: NextRequest) {
 
         // Create project data
         const project = {
-            name: projectName,  // RAG store resource name (the unique identifier)
+            name: projectName,         // RAG store resource name (acts as primary key)
             displayName: name.trim(),  // User-entered project name
             description: description?.trim() || '',
             color: color || 'bg-blue-500',

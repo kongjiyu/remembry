@@ -14,7 +14,6 @@ export async function POST(request: NextRequest) {
         
         const file = formData.get('file') as File;
         const title = formData.get('title') as string;
-        const participants = formData.get('participants') as string;
         const notes = formData.get('notes') as string;
         const projectName = formData.get('projectName') as string; // RAG store resource name
         const displayName = formData.get('displayName') as string; // User-entered project name
@@ -46,14 +45,14 @@ export async function POST(request: NextRequest) {
 
         if (!projectName) {
             return NextResponse.json(
-                { error: 'Project name (RAG store resource name) is required' },
+                { error: 'Project name is required' },
                 { status: 400 }
             );
         }
 
-        // Use the project's RAG store directly (projectName IS the RAG store resource name)
-        console.log(`[UPLOAD] Using RAG store: ${projectName}`);
+        // Use projectName directly as the RAG store name (it already is the resource name)
         const actualRagStoreName = projectName;
+        console.log(`[UPLOAD] Using RAG store: ${actualRagStoreName}`);
 
         // Generate a unique meeting ID
         const meetingId = `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;

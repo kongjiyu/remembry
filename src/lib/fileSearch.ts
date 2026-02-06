@@ -482,9 +482,7 @@ export async function listAllProjects(): Promise<Project[]> {
     try {
         const ragStores = await listAllRagStores();
         
-        // No filtering needed - all RAG stores are potential projects
-        // We'll rely on metadata to identify project stores vs other types
-        
+        // Skip system stores (User_, System_, etc.)
         const allProjects: Project[] = [];
         
         for (const store of ragStores) {
