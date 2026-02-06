@@ -14,8 +14,8 @@ export async function GET(request: NextRequest) {
         
         // Transform projects to store format with actual project names
         const stores = projects.map(project => ({
-            name: project.ragStoreName,
-            displayName: project.name, // User-entered project name from metadata
+            name: project.name,  // RAG store resource name
+            displayName: project.displayName, // User-entered project name
             createTime: project.createdAt
         }));
 

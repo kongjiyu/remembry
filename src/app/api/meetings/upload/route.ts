@@ -13,12 +13,11 @@ export async function POST(request: NextRequest) {
         const formData = await request.formData();
         
         const file = formData.get('file') as File;
-        const ragStoreName = formData.get('ragStoreName') as string;
         const title = formData.get('title') as string;
         const participants = formData.get('participants') as string;
         const notes = formData.get('notes') as string;
-        const projectId = formData.get('projectId') as string;
-        const projectName = formData.get('projectName') as string;
+        const projectName = formData.get('projectName') as string; // RAG store resource name
+        const displayName = formData.get('displayName') as string; // User-entered project name
         const fileType = formData.get('fileType') as string;
         const duration = formData.get('duration') as string;
         const notesLanguagesRaw = formData.get('notesLanguages') as string;
@@ -45,17 +44,16 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        if (!projectId) {
+        if (!projectName) {
             return NextResponse.json(
-                { error: 'Project ID is required' },
+                { error: 'Project name (RAG store resource name) is required' },
                 { status: 400 }
             );
         }
 
-        // Get the project-specific RAG store (ignore ragStoreName from form data)
-        console.log(`[UPLOAD] Getting project RAG store for project: ${projectId}`);
-        const actualRagStoreName = await getProjectRagStore(projectId, projectName);
-        console.log(`[UPLOAD] Using RAG store: ${actualRagStoreName}`);
+        // Use the project's RAG store directly (projectName IS the RAG store resource name)
+        console.log(`[UPLOAD] Using RAG store: ${projectName}`);
+        const actualRagStoreName = projectName;
 
         // Generate a unique meeting ID
         const meetingId = `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
@@ -204,8 +202,8 @@ export async function POST(request: NextRequest) {
         if (transcriptPath) {
             console.log(`[RAG] Starting RAG upload process...`);
             const customMetadata = [
-                ...(projectName ? [{ key: 'projectName', stringValue: projectName }] : []),
-                { key: 'projectId', stringValue: projectId },
+                ...(displayName ? [{ key: 'displayName', stringValue: displayName }] : []),
+                { key: 'projectName', stringValue: projectName },
                 { key: 'meetingId', stringValue: meetingId },
                 { key: 'title', stringValue: title || file.name },
                 { key: 'date', stringValue: new Date().toISOString() }
@@ -244,9 +242,8 @@ export async function POST(request: NextRequest) {
             title: title || file.name,
             participants: participants || '',
             notes: notes || '',
-            projectId,
             projectName,
-            ragStoreName: actualRagStoreName, // Return the actual RAG store name used
+            displayName,
             ragUploadStatus,
             uploadedAt: new Date().toISOString(),
             transcription: transcription,

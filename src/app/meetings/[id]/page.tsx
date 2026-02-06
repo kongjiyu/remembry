@@ -191,7 +191,7 @@ export default async function MeetingDetailPage({
     searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }) {
     const { id } = await params;
-    const { projectId, projectName } = await searchParams;
+    const { projectName, displayName } = await searchParams;
     
     const meeting = await getMeetingData(id);
 
@@ -202,8 +202,8 @@ export default async function MeetingDetailPage({
     const { transcription, notes } = meeting;
 
     // Handle potential array or undefined for search params
-    const pId = Array.isArray(projectId) ? projectId[0] : projectId;
-    const pName = Array.isArray(projectName) ? projectName[0] : projectName;
+    const pName = Array.isArray(projectName) ? projectName[0] : projectName; // RAG store resource name
+    const pDisplayName = Array.isArray(displayName) ? displayName[0] : displayName; // User-entered project name
 
     // Calculate actual duration from segments if available, otherwise estimate from text
     const calculateDuration = () => {
@@ -233,7 +233,7 @@ export default async function MeetingDetailPage({
         <DashboardLayout
             breadcrumbs={[
                 { label: "Meetings", href: "/meetings" },
-                ...(pId && pName ? [{ label: pName, href: `/projects/${pId}` }] : []),
+                ...(pName && pDisplayName ? [{ label: pDisplayName, href: `/projects/${encodeURIComponent(pName)}` }] : []),
                 { label: meeting.title }
             ]}
             title={meeting.title}
@@ -264,12 +264,12 @@ export default async function MeetingDetailPage({
                                         day: "numeric",
                                     })}
                                 </span>
-                                {pName && (
+                                {pDisplayName && (
                                     <>
                                         <span>•</span>
                                         <span className="flex items-center gap-1">
                                             <FolderKanban className="size-3" />
-                                            {pName}
+                                            {pDisplayName}
                                         </span>
                                     </>
                                 )}

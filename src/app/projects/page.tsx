@@ -31,11 +31,9 @@ interface Meeting {
 }
 
 interface Project {
-    id: string;
-    name: string;
+    name: string;          // RAG store resource name - acts as primary key
+    displayName: string;   // User-entered project name
     color?: string;
-    ragStoreName: string;
-    displayName: string;
     createdAt: string;
     meetings: Meeting[];
     meetingCount: number;
@@ -88,7 +86,8 @@ export default function ProjectsPage() {
         
         try {
             setIsDeleting(true);
-            const response = await fetch(`/api/projects/${projectToDelete.id}`, {
+            // Use project.name (RAG store resource name) as the identifier
+            const response = await fetch(`/api/projects/${encodeURIComponent(projectToDelete.name)}`, {
                 method: 'DELETE',
                 headers: {
                     'Content-Type': 'application/json',
@@ -115,7 +114,7 @@ export default function ProjectsPage() {
     };
 
     const filteredProjects = projects.filter(project =>
-        project.name.toLowerCase().includes(searchQuery.toLowerCase())
+        project.displayName.toLowerCase().includes(searchQuery.toLowerCase())
     );
 
     return (
@@ -238,7 +237,7 @@ export default function ProjectsPage() {
                             });
                             
                             return (
-                                <Card key={project.id} className="hover:shadow-md transition-shadow">
+                                <Card key={project.name} className="hover:shadow-md transition-shadow">
                                     <CardHeader>
                                         <div className="flex items-start justify-between">
                                             <div className="flex items-center gap-3">
@@ -246,7 +245,7 @@ export default function ProjectsPage() {
                                                     <FolderKanban className="size-5" />
                                                 </div>
                                                 <div>
-                                                    <CardTitle className="text-base">{project.name}</CardTitle>
+                                                    <CardTitle className="text-base">{project.displayName}</CardTitle>
                                                 </div>
                                             </div>
                                             <DropdownMenu>
@@ -257,7 +256,7 @@ export default function ProjectsPage() {
                                                 </DropdownMenuTrigger>
                                                 <DropdownMenuContent align="end">
                                                     <DropdownMenuItem asChild>
-                                                        <Link href={`/projects/${project.id}`}>View Details</Link>
+                                                        <Link href={`/projects/${encodeURIComponent(project.name)}`}>View Details</Link>
                                                     </DropdownMenuItem>
                                                     <DropdownMenuItem onClick={(e) => {
                                                         e.preventDefault();
@@ -287,7 +286,7 @@ export default function ProjectsPage() {
                                             </div>
                                             <div className="pt-2">
                                                 <Button asChild className="w-full" variant={project.meetingCount === 0 ? "default" : "outline"}>
-                                                    <Link href={project.meetingCount === 0 ? `/meetings/new` : `/projects/${project.id}`}>
+                                                    <Link href={project.meetingCount === 0 ? `/meetings/new` : `/projects/${encodeURIComponent(project.name)}`}>
                                                         {project.meetingCount === 0 ? (
                                                             <>
                                                                 <Plus className="size-4 mr-2" />
@@ -314,7 +313,7 @@ export default function ProjectsPage() {
                     <DialogHeader>
                         <DialogTitle>Delete Project</DialogTitle>
                         <DialogDescription>
-                            Are you sure you want to delete "{projectToDelete?.name}"? This will permanently delete
+                            Are you sure you want to delete "{projectToDelete?.displayName}"? This will permanently delete
                             the project and all {projectToDelete?.meetingCount} associated meeting(s) from the RAG store. This action cannot be undone.
                         </DialogDescription>
                     </DialogHeader>

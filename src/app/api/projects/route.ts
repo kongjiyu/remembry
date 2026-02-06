@@ -36,13 +36,12 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        // Generate a unique project ID
-        const projectId = crypto.randomUUID();
-
         // Create a dedicated RAG store for this project
-        let ragStoreName: string;
+        // The displayName is the user-entered project name
+        // The API will return the unique resource name (e.g., fileSearchStores/abc-123)
+        let projectName: string;
         try {
-            ragStoreName = await getProjectRagStore(projectId, name.trim(), color);
+            projectName = await getProjectRagStore(undefined, name.trim(), color);
         } catch (error) {
             console.error('Failed to create RAG store for project:', error);
             return NextResponse.json(
@@ -53,12 +52,11 @@ export async function POST(request: NextRequest) {
 
         // Create project data
         const project = {
-            id: projectId,
-            name: name.trim(),
+            name: projectName,  // RAG store resource name (the unique identifier)
+            displayName: name.trim(),  // User-entered project name
             description: description?.trim() || '',
             color: color || 'bg-blue-500',
             goals: goals?.trim() || '',
-            ragStoreName,
             createdAt: new Date().toISOString(),
         };
 

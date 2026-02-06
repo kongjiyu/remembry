@@ -20,21 +20,18 @@ interface Meeting {
     displayName: string;
     uploadTime?: string;
     mimeType?: string;
-    projectId?: string;
-    projectName?: string;
 }
 
 interface Project {
-    id: string;
-    name: string;
-    ragStoreName: string;
+    name: string;          // RAG store resource name - acts as primary key
+    displayName: string;   // User-entered project name
     meetings: Meeting[];
     meetingCount: number;
 }
 
 interface MeetingWithProject extends Meeting {
-    projectId: string;
-    projectName: string;
+    projectName: string;   // RAG store resource name
+    projectDisplayName: string;  // User-entered project name
 }
 
 function getStatusInfo(status: string) {
@@ -95,8 +92,8 @@ export default function MeetingsPage() {
                     if (!meeting.displayName.startsWith('project-')) {
                         allMeetings.push({
                             ...meeting,
-                            projectId: project.id,
-                            projectName: project.name
+                            projectName: project.name,  // RAG store resource name
+                            projectDisplayName: project.displayName  // User-entered project name
                         });
                     }
                 });
@@ -119,7 +116,7 @@ export default function MeetingsPage() {
 
     const filteredMeetings = meetings.filter(meeting =>
         meeting.displayName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        meeting.projectName.toLowerCase().includes(searchQuery.toLowerCase())
+        meeting.projectDisplayName?.toLowerCase().includes(searchQuery.toLowerCase())
     );
 
     const formatDate = (dateString?: string) => {
@@ -222,10 +219,10 @@ export default function MeetingsPage() {
                                                 </DropdownMenuTrigger>
                                                 <DropdownMenuContent align="end">
                                                     <DropdownMenuItem asChild>
-                                                        <Link href={`/projects/${meeting.projectId}`}>View Project</Link>
+                                                        <Link href={`/projects/${encodeURIComponent(meeting.projectName)}`}>View Project</Link>
                                                     </DropdownMenuItem>
                                                     <DropdownMenuItem asChild>
-                                                        <Link href={`/meetings/${encodedDocName}?projectId=${meeting.projectId}&projectName=${encodeURIComponent(meeting.projectName)}`}>
+                                                        <Link href={`/meetings/${encodedDocName}?projectName=${encodeURIComponent(meeting.projectName)}&displayName=${encodeURIComponent(meeting.projectDisplayName || '')}`}>
                                                             View Transcript
                                                         </Link>
                                                     </DropdownMenuItem>
@@ -238,7 +235,7 @@ export default function MeetingsPage() {
                                         <div className="flex items-center gap-2 mb-3">
                                             <FolderKanban className="size-3 text-muted-foreground" />
                                             <span className="text-sm text-muted-foreground truncate">
-                                                {meeting.projectName}
+                                                {meeting.projectDisplayName}
                                             </span>
                                         </div>
 
@@ -254,7 +251,7 @@ export default function MeetingsPage() {
                                         </div>
                                     </CardContent>
                                     <Link 
-                                        href={`/meetings/${encodedDocName}?projectId=${meeting.projectId}&projectName=${encodeURIComponent(meeting.projectName)}`} 
+                                        href={`/meetings/${encodedDocName}?projectName=${encodeURIComponent(meeting.projectName)}&displayName=${encodeURIComponent(meeting.projectDisplayName || '')}`} 
                                         className="absolute inset-0"
                                     >
                                         <span className="sr-only">View meeting</span>

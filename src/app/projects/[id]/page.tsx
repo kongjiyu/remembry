@@ -45,10 +45,8 @@ interface Meeting {
 }
 
 interface Project {
-    id: string;
-    name: string;
-    ragStoreName: string;
-    displayName: string;
+    name: string;          // RAG store resource name - acts as primary key  
+    displayName: string;   // User-entered project name
     createdAt: string;
     meetings: Meeting[];
     meetingCount: number;
@@ -58,7 +56,7 @@ export default function ProjectDetailsPage() {
     const paramsPromise = useParams();
     const router = useRouter();
     
-    const [projectId, setProjectId] = useState<string>('');
+    const [projectName, setProjectName] = useState<string>(''); // RAG store resource name
     const [project, setProject] = useState<Project | null>(null);
     const [loading, setLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState("");
@@ -69,16 +67,17 @@ export default function ProjectDetailsPage() {
         const initializeParams = async () => {
             const params = await paramsPromise;
             const id = params.id as string;
-            setProjectId(id);
+            // The URL param is the RAG store resource name (could be URL encoded)
+            setProjectName(decodeURIComponent(id));
         };
         initializeParams();
     }, [paramsPromise]);
 
     useEffect(() => {
-        if (projectId) {
+        if (projectName) {
             fetchProjectDetails();
         }
-    }, [projectId]);
+    }, [projectName]);
 
     const fetchProjectDetails = async () => {
         try {
@@ -90,7 +89,7 @@ export default function ProjectDetailsPage() {
             }
 
             const data = await response.json();
-            const foundProject = data.projects?.find((p: Project) => p.id === projectId);
+            const foundProject = data.projects?.find((p: Project) => p.name === projectName);
             
             if (foundProject) {
                 setProject(foundProject);
@@ -113,7 +112,7 @@ export default function ProjectDetailsPage() {
         
         try {
             setIsDeleting(true);
-            const response = await fetch(`/api/projects/${project.id}`, {
+            const response = await fetch(`/api/projects/${encodeURIComponent(project.name)}`, {
                 method: 'DELETE',
             });
 
@@ -192,9 +191,9 @@ export default function ProjectDetailsPage() {
         <DashboardLayout
             breadcrumbs={[
                 { label: "Projects", href: "/projects" },
-                { label: project.name }
+                { label: project.displayName }
             ]}
-            title={project.name}
+            title={project.displayName}
         >
             <div className="space-y-6">
                 {/* Header Actions */}
@@ -207,13 +206,13 @@ export default function ProjectDetailsPage() {
                     </Button>
                     <div className="flex gap-2">
                         <Button variant="outline" asChild>
-                            <Link href={`/ask?projectId=${project.id}&projectName=${encodeURIComponent(project.name)}`}>
+                            <Link href={`/ask?projectName=${encodeURIComponent(project.name)}&displayName=${encodeURIComponent(project.displayName)}`}>
                                 <MessageCircleQuestion className="size-4 mr-2" />
                                 Ask Questions
                             </Link>
                         </Button>
                         <Button asChild className="gap-2">
-                            <Link href={`/meetings/new?projectId=${project.id}&projectName=${encodeURIComponent(project.name)}&ragStoreName=${encodeURIComponent(project.ragStoreName)}`}>
+                            <Link href={`/meetings/new?projectName=${encodeURIComponent(project.name)}&displayName=${encodeURIComponent(project.displayName)}`}>
                                 <Upload className="size-4" />
                                 Upload Meeting
                             </Link>
@@ -279,7 +278,7 @@ export default function ProjectDetailsPage() {
                         </CardHeader>
                         <CardContent>
                             <div className="text-sm font-mono truncate">
-                                {project.ragStoreName.split('/').pop()}
+                                {project.name.split('/').pop()}
                             </div>
                             <p className="text-xs text-muted-foreground mt-1">
                                 Store identifier
@@ -320,7 +319,7 @@ export default function ProjectDetailsPage() {
                                 </p>
                                 {!searchQuery && (
                                     <Button asChild>
-                                        <Link href={`/meetings/new?projectId=${project.id}&projectName=${encodeURIComponent(project.name)}&ragStoreName=${encodeURIComponent(project.ragStoreName)}`}>
+                                        <Link href={`/meetings/new?projectName=${encodeURIComponent(project.name)}&displayName=${encodeURIComponent(project.displayName)}`}>
                                             <Plus className="size-4 mr-2" />
                                             Upload Meeting
                                         </Link>
@@ -370,12 +369,12 @@ export default function ProjectDetailsPage() {
                                                     </DropdownMenuTrigger>
                                                     <DropdownMenuContent align="end">
                                                         <DropdownMenuItem asChild>
-                                                            <Link href={`/meetings/${encodedDocName}?projectId=${project.id}&projectName=${encodeURIComponent(project.name)}`}>
+                                                            <Link href={`/meetings/${encodedDocName}?projectName=${encodeURIComponent(project.name)}&displayName=${encodeURIComponent(project.displayName)}`}>
                                                                 View Transcript
                                                             </Link>
                                                         </DropdownMenuItem>
                                                         <DropdownMenuItem asChild>
-                                                            <Link href={`/ask?type=meeting&id=${encodeURIComponent(meeting.name)}&name=${encodeURIComponent(meeting.displayName)}&projectId=${project.id}`}>
+                                                            <Link href={`/ask?type=meeting&id=${encodeURIComponent(meeting.name)}&name=${encodeURIComponent(meeting.displayName)}&projectName=${encodeURIComponent(project.name)}`}>
                                                                 Ask Questions
                                                             </Link>
                                                         </DropdownMenuItem>
@@ -388,7 +387,7 @@ export default function ProjectDetailsPage() {
                                             </div>
                                         </CardHeader>
                                         <Link 
-                                            href={`/meetings/${encodedDocName}?projectId=${project.id}&projectName=${encodeURIComponent(project.name)}`}
+                                            href={`/meetings/${encodedDocName}?projectName=${encodeURIComponent(project.name)}&displayName=${encodeURIComponent(project.displayName)}`}
                                             className="absolute inset-0"
                                         >
                                             <span className="sr-only">View meeting transcript</span>
@@ -407,8 +406,8 @@ export default function ProjectDetailsPage() {
                     <DialogHeader>
                         <DialogTitle>Delete Project</DialogTitle>
                         <DialogDescription>
-                            Are you sure you want to delete "{project?.name}"? This will permanently delete
-                            the project and all associated meetings from the RAG store. This action cannot be undone.
+                            Are you sure you want to delete "{project?.displayName}"? This will permanently delete
+                            the project and all {project?.meetingCount} associated meeting(s) from the RAG store. This action cannot be undone.
                         </DialogDescription>
                     </DialogHeader>
                     <DialogFooter>

@@ -95,14 +95,13 @@ export async function uploadToRagStore(
 }
 
 /**
- * @deprecated - No longer needed with per-project RAG stores
+ * @deprecated - No longer needed with simplified project model
  * Save project metadata to RAG store as a special document
  * This allows projects to be listed even when they have no meetings yet
  */
 export async function saveProjectMetadata(
     ragStoreName: string,
-    projectId: string,
-    projectName: string,
+    displayName: string,
     projectData: any
 ): Promise<void> {
     ensureInitialized();
@@ -114,21 +113,20 @@ export async function saveProjectMetadata(
         const projectInfo = JSON.stringify(projectData, null, 2);
         
         // Write to temp file
-        const fileName = `project-${projectId}.txt`;
+        const fileName = `project-metadata.txt`;
         tempPath = path.join(os.tmpdir(), fileName);
         await writeFile(tempPath, projectInfo);
         
         // Upload with special metadata to identify as project metadata
         const customMetadata = [
-            { key: 'project', stringValue: projectId },
-            { key: 'projectName', stringValue: projectName },
+            { key: 'displayName', stringValue: displayName },
             { key: 'documentType', stringValue: 'project-metadata' },
         ];
         
         await uploadToRagStore(ragStoreName, tempPath, 'text/plain', fileName, customMetadata);
-        console.log(`Project metadata saved for ${projectName}`);
+        console.log(`Project metadata saved for ${displayName}`);
     } catch (error) {
-        console.error(`Failed to save project metadata for ${projectName}:`, error);
+        console.error(`Failed to save project metadata for ${displayName}:`, error);
         throw error;
     } finally {
         if (tempPath) {
@@ -470,11 +468,9 @@ export interface Meeting {
 }
 
 export interface Project {
-    id: string;
-    name: string;
+    name: string;          // RAG store resource name (e.g., "fileSearchStores/abc-123") - acts as primary key
+    displayName: string;   // User-entered project name for display
     color?: string;
-    ragStoreName: string;
-    displayName: string;
     createdAt: string;
     meetings: Meeting[];
     meetingCount: number;
@@ -486,44 +482,39 @@ export async function listAllProjects(): Promise<Project[]> {
     try {
         const ragStores = await listAllRagStores();
         
-        // Filter only project RAG stores (exclude user-specific or other types of stores)
-        // Projects either start with "Project_" (old format) or have project metadata
-        const projectStores = ragStores.filter(store => 
-            store.displayName?.startsWith('Project_') || 
-            // Include any store that doesn't look like a user/system store
-            (store.displayName && !store.displayName.startsWith('User_') && !store.displayName.startsWith('System_'))
-        );
+        // No filtering needed - all RAG stores are potential projects
+        // We'll rely on metadata to identify project stores vs other types
         
         const allProjects: Project[] = [];
         
-        for (const store of projectStores) {
+        for (const store of ragStores) {
             if (!store.name || !store.displayName) continue;
             
+            // Skip system stores (User_, System_, etc.)
+            if (store.displayName.startsWith('User_') || store.displayName.startsWith('System_')) {
+                continue;
+            }
+            
             try {
-                // Fetch all documents in this project's RAG store
+                // Fetch all documents in this RAG store
                 const allDocs = await listDocumentsInRagStore(store.name);
                 
                 // Separate metadata document from actual meetings
                 const meetings = allDocs.filter(doc => doc.displayName !== '.project-metadata.json');
                 
-                // Try to get project name, ID, and color from metadata document
-                let projectName = store.displayName;
-                let projectId = '';
+                // Try to get display name and color from metadata document
+                let displayName = store.displayName;
                 let color = 'bg-blue-500'; // default color
                 const metadataDoc = allDocs.find(doc => doc.displayName === '.project-metadata.json');
                 
                 if (metadataDoc?.name) {
                     try {
                         const doc = await ai.fileSearchStores.documents.get({ name: metadataDoc.name });
-                        const projectNameMetadata = doc.customMetadata?.find(m => m.key === 'projectName');
-                        const projectIdMetadata = doc.customMetadata?.find(m => m.key === 'projectId');
+                        const displayNameMetadata = doc.customMetadata?.find(m => m.key === 'displayName');
                         const colorMetadata = doc.customMetadata?.find(m => m.key === 'color');
                         
-                        if (projectNameMetadata?.stringValue) {
-                            projectName = projectNameMetadata.stringValue;
-                        }
-                        if (projectIdMetadata?.stringValue) {
-                            projectId = projectIdMetadata.stringValue;
+                        if (displayNameMetadata?.stringValue) {
+                            displayName = displayNameMetadata.stringValue;
                         }
                         if (colorMetadata?.stringValue) {
                             color = colorMetadata.stringValue;
@@ -533,38 +524,10 @@ export async function listAllProjects(): Promise<Project[]> {
                     }
                 }
                 
-                // Fallback: Extract project ID from display name if it follows old format (Project_<projectId>)
-                if (!projectId && store.displayName.startsWith('Project_')) {
-                    projectId = store.displayName.replace('Project_', '');
-                    projectName = `Project ${projectId.slice(0, 8)}`;
-                } else if (!projectId) {
-                    // If still no projectId, try to get from first meeting's metadata
-                    if (meetings.length > 0 && meetings[0].name) {
-                        try {
-                            const doc = await ai.fileSearchStores.documents.get({ name: meetings[0].name });
-                            const projectIdMetadata = doc.customMetadata?.find(m => m.key === 'projectId');
-                            if (projectIdMetadata?.stringValue) {
-                                projectId = projectIdMetadata.stringValue;
-                            }
-                        } catch (error) {
-                            console.warn(`Failed to get project ID from meeting metadata:`, error);
-                        }
-                    }
-                    
-                    // Last resort: use the displayName as ID (it's unique per store)
-                    // This ensures uniqueness since each RAG store has a unique displayName
-                    if (!projectId) {
-                        projectId = store.displayName;
-                        projectName = store.displayName;
-                    }
-                }
-                
                 allProjects.push({
-                    id: projectId,
-                    name: projectName,
+                    name: store.name,              // RAG store resource name (fileSearchStores/xyz)
+                    displayName: displayName,       // User-entered project name
                     color: color,
-                    ragStoreName: store.name,
-                    displayName: store.displayName,
                     createdAt: store.createTime || new Date().toISOString(),
                     meetings: meetings,
                     meetingCount: meetings.length,
@@ -575,25 +538,8 @@ export async function listAllProjects(): Promise<Project[]> {
             }
         }
         
-        // Remove duplicates by ragStoreName (the actual unique identifier)
-        const uniqueProjects = new Map<string, typeof allProjects[0]>();
-        for (const project of allProjects) {
-            // Use ragStoreName as the key since it's guaranteed unique
-            const existing = uniqueProjects.get(project.ragStoreName);
-            if (!existing) {
-                uniqueProjects.set(project.ragStoreName, project);
-            } else {
-                // Keep the project with more meetings, or the newer one if equal
-                if (project.meetingCount > existing.meetingCount ||
-                    (project.meetingCount === existing.meetingCount && 
-                     new Date(project.createdAt) > new Date(existing.createdAt))) {
-                    console.warn(`Duplicate project detected: ${project.ragStoreName}, keeping newer/fuller version`);
-                    uniqueProjects.set(project.ragStoreName, project);
-                }
-            }
-        }
-        
-        return Array.from(uniqueProjects.values());
+        // No duplicate removal needed since 'name' (RAG store resource name) is unique by design
+        return allProjects;
     } catch (error) {
         console.error('Failed to list projects:', error);
         throw new Error(`Failed to list projects: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -601,56 +547,53 @@ export async function listAllProjects(): Promise<Project[]> {
 }
 
 /**
- * Get or create a project's RAG store. Each project has its own dedicated RAG store.
+ * Get or create a project's RAG store by name. Each project has its own dedicated RAG store.
  * This provides complete isolation between projects.
+ * 
+ * @param projectName - The RAG store resource name (e.g., "fileSearchStores/abc-123"). If provided, returns this name.
+ * @param displayName - The user-entered project name. Required when creating a new store.
+ * @param color - Optional color for the project.
+ * @returns The RAG store resource name
  */
-export async function getProjectRagStore(projectId: string, projectName?: string, color?: string): Promise<string> {
+export async function getProjectRagStore(projectName?: string, displayName?: string, color?: string): Promise<string> {
     ensureInitialized();
     
-    // Create a UNIQUE display name using projectId to prevent duplicates
-    // Format: "Project_{projectId}" - this ensures uniqueness
-    const uniqueDisplayName = `Project_${projectId}`;
+    // If projectName is provided, it means the store already exists - just return it
+    if (projectName && projectName.trim() !== '') {
+        console.log(`[getProjectRagStore] Using existing RAG store: ${projectName}`);
+        return projectName.trim();
+    }
+    
+    // Creating new store - displayName is required
+    if (!displayName || typeof displayName !== 'string' || displayName.trim() === '') {
+        throw new Error('displayName is required when creating a new RAG store');
+    }
     
     try {
-        // Check if project already has a RAG store by unique displayName
-        console.log(`[getProjectRagStore] Looking for RAG store: ${uniqueDisplayName}`);
-        const ragStores = await listAllRagStores();
-        
-        // Search by the unique displayName first (fast and reliable)
-        const existingStore = ragStores.find(store => store.displayName === uniqueDisplayName);
-        
-        if (existingStore && existingStore.name) {
-            console.log(`[getProjectRagStore] ✓ Found existing RAG store: ${existingStore.name}`);
-            return existingStore.name;
-        }
-        
-        // Create new RAG store for this project with unique displayName
-        console.log(`[getProjectRagStore] Creating new RAG store: ${uniqueDisplayName}`);
-        const ragStoreName = await createRagStore(uniqueDisplayName);
+        // Create new RAG store with the user's displayName
+        // The API will generate a unique resource name automatically
+        console.log(`[getProjectRagStore] Creating new RAG store with displayName: ${displayName}`);
+        const ragStoreName = await createRagStore(displayName.trim());
         console.log(`[getProjectRagStore] ✓ Created RAG store: ${ragStoreName}`);
         
-        // Save project metadata if provided
-        if (projectName) {
+        // Save project metadata if color is provided
+        if (color) {
             let tempPath: string | null = null;
             try {
-                const metadata = { projectId, projectName, color, createdAt: new Date().toISOString() };
+                const metadata = { displayName, color, createdAt: new Date().toISOString() };
                 const fileName = '.project-metadata.json';
                 
-                tempPath = path.join(os.tmpdir(), `project-meta-${projectId}.json`);
+                tempPath = path.join(os.tmpdir(), `project-meta-${Date.now()}.json`);
                 await writeFile(tempPath, JSON.stringify(metadata, null, 2));
                 
                 const customMetadata = [
-                    { key: 'projectName', stringValue: projectName },
-                    { key: 'projectId', stringValue: projectId },
-                    { key: 'isMetadata', stringValue: 'true' }
+                    { key: 'displayName', stringValue: displayName },
+                    { key: 'isMetadata', stringValue: 'true' },
+                    { key: 'color', stringValue: color }
                 ];
                 
-                if (color) {
-                    customMetadata.push({ key: 'color', stringValue: color });
-                }
-                
                 await uploadToRagStore(ragStoreName, tempPath, 'application/json', fileName, customMetadata);
-                console.log(`Project metadata saved for ${projectName}`);
+                console.log(`Project metadata saved for ${displayName}`);
             } catch (metaError) {
                 console.warn(`Failed to save project metadata:`, metaError);
                 // Don't fail the whole operation if metadata save fails
@@ -667,8 +610,8 @@ export async function getProjectRagStore(projectId: string, projectName?: string
         
         return ragStoreName;
     } catch (error) {
-        console.error(`Failed to get/create RAG store for project ${projectId}:`, error);
-        throw new Error(`Failed to get/create RAG store: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        console.error(`Failed to create RAG store for project ${displayName}:`, error);
+        throw new Error(`Failed to create RAG store: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
 }
 
@@ -704,15 +647,18 @@ export async function getUserRagStore(userId: string): Promise<string> {
 }
 
 /**
- * Check if any projects exist by checking for Project RAG stores
+ * Check if any projects exist by checking for RAG stores (excluding system stores)
  */
 export async function userHasProjects(userId: string): Promise<boolean> {
     ensureInitialized();
     
     try {
         const ragStores = await listAllRagStores();
-        // Check if any Project_ stores exist
-        const projectStores = ragStores.filter(store => store.displayName?.startsWith('Project_'));
+        // Check if any stores exist that aren't system stores
+        const projectStores = ragStores.filter(store => 
+            !store.displayName?.startsWith('User_') && 
+            !store.displayName?.startsWith('System_')
+        );
         return projectStores.length > 0;
     } catch (error) {
         console.error(`Failed to check if user ${userId} has projects:`, error);

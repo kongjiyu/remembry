@@ -53,7 +53,7 @@ export async function POST(request: NextRequest) {
         const projects = await listAllProjects();
         const storeToProjectName = new Map<string, string>();
         projects.forEach(project => {
-            storeToProjectName.set(project.ragStoreName, project.name);
+            storeToProjectName.set(project.name, project.displayName);
         });
 
         // Step 1: Parallel retrieval from all stores (chunks only, NO generation)

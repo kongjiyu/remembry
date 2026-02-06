@@ -10,40 +10,18 @@ export async function DELETE(
 ) {
     try {
         const params = await context.params;
-        const projectId = params.projectId;
+        const projectName = params.projectId; // Note: URL param is still projectId for backwards compatibility
 
-        if (!projectId) {
+        if (!projectName) {
             return NextResponse.json(
-                { error: 'Project ID is required' },
+                { error: 'Project name is required' },
                 { status: 400 }
             );
         }
 
-        // Check if ragStoreName is provided in the request body (more efficient)
-        let ragStoreName: string | undefined;
-        try {
-            const body = await request.json();
-            ragStoreName = body.ragStoreName;
-        } catch {
-            // No body provided, will look up from projects list
-        }
-
-        if (!ragStoreName) {
-            // Find the project to get its actual ragStoreName
-            const projects = await listAllProjects();
-            const project = projects.find(p => p.id === projectId);
-            
-            if (!project) {
-                return NextResponse.json(
-                    { error: 'Project not found' },
-                    { status: 404 }
-                );
-            }
-            ragStoreName = project.ragStoreName;
-        }
-
-        // Delete the RAG store using the actual store name
-        await deleteRagStore(ragStoreName);
+        // The projectName IS the RAG store name (resource name)
+        // No need to call getProjectRagStore -just delete directly
+        await deleteRagStore(projectName);
 
         return NextResponse.json({
             success: true,

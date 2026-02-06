@@ -7,25 +7,24 @@ initialize();
 export async function POST(request: NextRequest) {
     try {
         const body = await request.json();
-        const { projectId, question } = body;
+        const { projectName, question } = body; // projectName is RAG store resource name
 
-        console.log("Ask query received:", { projectId, questionLength: question?.length });
+        console.log("Ask query received:", { projectName, questionLength: question?.length });
 
-        if (!projectId || !question) {
+        if (!projectName || !question) {
             return NextResponse.json(
-                { error: "Missing required parameters: projectId and question are required" },
+                { error: "Missing required parameters: projectName and question are required" },
                 { status: 400 }
             );
         }
 
-        // Get the project-specific RAG store
-        // Each project has its own isolated RAG store, so no filtering needed
-        const ragStoreName = await getProjectRagStore(projectId);
+        // projectName IS the RAG store name - use it directly
+        const ragStoreName = projectName;
         
         // Simplified query - no need for project filtering since each project has its own store
         const searchQuery = `User Question: ${question}\n\nProvide a detailed answer based on the uploaded documents. Include specific references to document names or sections when possible. If the information is not available, clearly state that.`;
         
-        console.log("Querying project RAG store:", { ragStoreName, projectId });
+        console.log("Querying project RAG store:", { ragStoreName, projectName });
         
         const result = await fileSearch(ragStoreName, searchQuery);
 

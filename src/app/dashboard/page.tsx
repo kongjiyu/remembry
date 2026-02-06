@@ -9,11 +9,9 @@ import { Mic, FileText, Clock, CheckCircle2, AlertCircle, Upload, TrendingUp, Fo
 import Link from "next/link";
 
 interface Project {
-    id: string;
-    name: string;
+    name: string;          // RAG store resource name - acts as primary key
+    displayName: string;   // User-entered project name
     color?: string;
-    ragStoreName: string;
-    displayName: string;
     createdAt: string;
     meetings: any[];
     meetingCount: number;
@@ -127,8 +125,8 @@ export default function DashboardPage() {
         .flatMap(project => 
             (project.meetings || []).map((meeting: any) => ({
                 ...meeting,
-                projectId: project.id,
-                projectName: project.name
+                projectName: project.name,  // RAG store resource name
+                projectDisplayName: project.displayName  // User-entered project name
             }))
         )
         .filter((meeting: any) => !meeting.displayName?.startsWith('project-'))
@@ -260,18 +258,18 @@ export default function DashboardPage() {
                             <div className="space-y-4">
                                 {recentProjectsList.map((project) => (
                                     <div
-                                        key={project.id}
+                                        key={project.name}
                                         className="flex items-center justify-between p-4 rounded-lg border hover:bg-muted/50 transition-colors"
                                     >
                                         <Link
-                                            href={`/projects/${project.id}`}
+                                            href={`/projects/${encodeURIComponent(project.name)}`}
                                             className="flex items-center gap-4 flex-1"
                                         >
                                             <div className={`size-10 rounded-lg ${project.color || 'bg-blue-500'} flex items-center justify-center text-white`}>
                                                 <FolderKanban className="size-5" />
                                             </div>
                                             <div>
-                                                <h3 className="font-medium">{project.name}</h3>
+                                                <h3 className="font-medium">{project.displayName}</h3>
                                                 <p className="text-sm text-muted-foreground">
                                                     Created {new Date(project.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                                                 </p>
@@ -286,7 +284,7 @@ export default function DashboardPage() {
                                                 variant="outline"
                                                 asChild
                                             >
-                                                <Link href={`/ask?projectId=${project.id}&projectName=${encodeURIComponent(project.name)}`}>
+                                                <Link href={`/ask?projectName=${encodeURIComponent(project.name)}&displayName=${encodeURIComponent(project.displayName)}`}>
                                                     <MessageCircleQuestion className="size-4 mr-2" />
                                                     Ask
                                                 </Link>
@@ -339,7 +337,7 @@ export default function DashboardPage() {
                                             className="flex items-center justify-between p-4 rounded-lg border hover:bg-muted/50 transition-colors"
                                         >
                                             <Link
-                                                href={`/meetings/${encodedDocName}?projectId=${meeting.projectId}&projectName=${encodeURIComponent(meeting.projectName)}`}
+                                                href={`/meetings/${encodedDocName}?projectName=${encodeURIComponent(meeting.projectName)}&displayName=${encodeURIComponent(meeting.projectDisplayName || '')}`}
                                                 className="flex items-center gap-4 flex-1"
                                             >
                                                 <div className="size-10 rounded-lg bg-primary/10 flex items-center justify-center">
@@ -348,7 +346,7 @@ export default function DashboardPage() {
                                                 <div>
                                                     <h3 className="font-medium">{meeting.displayName || meeting.name}</h3>
                                                     <p className="text-sm text-muted-foreground">
-                                                        {meeting.projectName} • {uploadDate}
+                                                        {meeting.projectDisplayName} • {uploadDate}
                                                     </p>
                                                 </div>
                                             </Link>

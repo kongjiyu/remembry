@@ -36,10 +36,8 @@ const SUPPORTED_LANGUAGES = [
 ] as const;
 
 interface Project {
-    id: string;
-    name: string;
-    ragStoreName: string;
-    displayName: string;
+    name: string;          // RAG store resource name - acts as primary key
+    displayName: string;   // User-entered project name
     createdAt: string;
     meetings: any[];
     meetingCount: number;
@@ -215,12 +213,12 @@ export default function NewMeetingPage() {
             // Create FormData for file upload
             const formData = new FormData();
             formData.append('file', uploadedFile.file);
-            formData.append('ragStoreName', selectedProject.ragStoreName);
+            formData.append('projectName', selectedProject.name); // RAG store resource name
+            formData.append('displayName', selectedProject.displayName); // User-entered project name
             formData.append('title', title || uploadedFile.name);
+            formData.append('fileType', uploadedFile.fileType); // 'audio' or 'text'
             // Removed participants as requested in the new feature
             formData.append('notes', notes);
-            formData.append('projectId', selectedProject.id);
-            formData.append('fileType', uploadedFile.fileType);
             formData.append('notesLanguages', JSON.stringify(notesLanguages));
             if (uploadedFile.duration) {
                 formData.append('duration', uploadedFile.duration.toString());
@@ -243,7 +241,12 @@ export default function NewMeetingPage() {
 
             // Navigate to meeting detail page if ID exists, otherwise meetings list
             if (data.meetingId) {
-                router.push(`/meetings/${data.meetingId}`);
+                // Pass project info as query params for breadcrumb navigation
+                const queryParams = new URLSearchParams({
+                    projectName: selectedProject.name,
+                    displayName: selectedProject.displayName
+                });
+                router.push(`/meetings/${data.meetingId}?${queryParams.toString()}`);
             } else {
                 router.push('/meetings');
             }
@@ -425,7 +428,7 @@ export default function NewMeetingPage() {
                                             {selectedProject ? (
                                                 <span className="flex items-center gap-2 truncate">
                                                     <FolderKanban className="size-4 shrink-0" />
-                                                    <span className="truncate">{selectedProject.name}</span>
+                                                        <span className="truncate">{selectedProject.displayName}</span>
                                                 </span>
                                             ) : (
                                                 <span className="text-muted-foreground">Select a project</span>
@@ -440,12 +443,12 @@ export default function NewMeetingPage() {
                                         ) : (
                                             projects.map((project) => (
                                                 <DropdownMenuItem
-                                                    key={project.id}
+                                                    key={project.name}
                                                     onClick={() => setSelectedProject(project)}
                                                     className="flex items-center gap-2"
                                                 >
                                                     <FolderKanban className="size-4" />
-                                                    <span>{project.name}</span>
+                                                    <span>{project.displayName}</span>
                                                     <span className="ml-auto text-xs text-muted-foreground">
                                                         {project.meetingCount} meetings
                                                     </span>

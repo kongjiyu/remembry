@@ -7,21 +7,20 @@ initialize();
 export async function GET(request: NextRequest) {
     try {
         const searchParams = request.nextUrl.searchParams;
-        const projectId = searchParams.get("projectId");
+        const projectName = searchParams.get("projectName"); // RAG store resource name
 
-        if (!projectId) {
+        if (!projectName) {
             return NextResponse.json(
-                { error: "Missing projectId parameter" },
+                { error: "Missing projectName parameter" },
                 { status: 400 }
             );
         }
 
-        // Get project-specific RAG store
-        const ragStoreName = await getProjectRagStore(projectId);
+        // projectName IS the RAG store name - use it directly
+        const ragStoreName = projectName;
         
         // Generate example questions for the project
-        // No need to pass contextId since all documents in this store belong to this project
-        const questions = await generateExampleQuestions(ragStoreName, "project", projectId);
+        const questions = await generateExampleQuestions(ragStoreName, "project", projectName);
 
         return NextResponse.json({ questions });
     } catch (error) {

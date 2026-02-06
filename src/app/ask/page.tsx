@@ -27,8 +27,8 @@ interface Message {
 
 function AskQuestionContent() {
     const searchParams = useSearchParams();
-    const [projectId, setProjectId] = useState<string | null>(null);
-    const [projectName, setProjectName] = useState<string | null>(null);
+    const [projectName, setProjectName] = useState<string | null>(null); // RAG store resource name
+    const [displayName, setDisplayName] = useState<string | null>(null); // User-entered project name
     
     const [messages, setMessages] = useState<Message[]>([]);
     const [input, setInput] = useState("");
@@ -39,23 +39,23 @@ function AskQuestionContent() {
     const [selectedSource, setSelectedSource] = useState<string>("");
 
     useEffect(() => {
-        const projectIdParam = searchParams?.get("projectId");
         const projectNameParam = searchParams?.get("projectName");
+        const displayNameParam = searchParams?.get("displayName");
         
-        setProjectId(projectIdParam);
         setProjectName(projectNameParam);
+        setDisplayName(displayNameParam);
     }, [searchParams]);
 
     // ... (rest of the component logic remains exactly the same until return)
 
     // Load example questions
     useEffect(() => {
-        if (!projectId) return;
+        if (!projectName) return;
 
         const loadExamples = async () => {
             setLoadingExamples(true);
             try {
-                const response = await fetch(`/api/ask/examples?projectId=${encodeURIComponent(projectId)}`);
+                const response = await fetch(`/api/ask/examples?projectName=${encodeURIComponent(projectName)}`);
                 if (response.ok) {
                     const data = await response.json();
                     setExampleQuestions(data.questions || []);
@@ -68,7 +68,7 @@ function AskQuestionContent() {
         };
 
         loadExamples();
-    }, [projectId]);
+    }, [projectName]);
 
     const handleSendMessage = async (question?: string) => {
         const messageText = question || input.trim();
@@ -88,7 +88,7 @@ function AskQuestionContent() {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                    projectId,
+                    projectName,  // RAG store resource name
                     question: messageText
                 })
             });
@@ -193,13 +193,13 @@ function AskQuestionContent() {
     };
 
     const getBackLink = () => {
-        if (projectId) {
-            return `/projects/${projectId}`;
+        if (projectName) {
+            return `/projects/${encodeURIComponent(projectName)}`;
         }
         return "/dashboard";
     };
 
-    if (!projectId) {
+    if (!projectName) {
         return (
             <DashboardLayout
                 breadcrumbs={[{ label: "Ask Questions" }]}
@@ -217,14 +217,14 @@ function AskQuestionContent() {
 
     const breadcrumbs = [
         { label: "Projects", href: "/projects" },
-        ...(projectId ? [{ label: projectName || "Project", href: `/projects/${projectId}` }] : []),
+        ...(projectName ? [{ label: displayName || "Project", href: `/projects/${encodeURIComponent(projectName)}` }] : []),
         { label: "Ask Questions" }
     ];
 
     return (
         <DashboardLayout
             breadcrumbs={breadcrumbs}
-            title={`Ask Questions: ${projectName || "Project"}`}
+            title={`Ask Questions: ${displayName || "Project"}`}
         >
             <div className="flex flex-col" style={{ height: 'calc(100vh - 200px)' }}>
                 {/* Chat Area */}
