@@ -33,6 +33,7 @@ interface Meeting {
 interface Project {
     id: string;
     name: string;
+    color?: string;
     ragStoreName: string;
     displayName: string;
     createdAt: string;
