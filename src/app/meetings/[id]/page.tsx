@@ -241,9 +241,9 @@ export default async function MeetingDetailPage({
             <div className="space-y-6">
                 {/* Back Button */}
                 <Button variant="outline" size="sm" asChild>
-                    <Link href={pId ? `/projects/${pId}` : "/meetings"}>
+                    <Link href={pName ? `/projects/${encodeURIComponent(pName)}` : "/meetings"}>
                         <ArrowLeft className="size-4 mr-2" />
-                        {pId ? "Back to Project" : "Back to Meetings"}
+                        {pName ? "Back to Project" : "Back to Meetings"}
                     </Link>
                 </Button>
 

@@ -89,7 +89,7 @@ export async function POST(request: NextRequest) {
             // Save as transcript for RAG upload
             transcriptPath = path.join(uploadsDir, "transcript.txt");
             console.log(`[TEXT] Transcript path: ${transcriptPath}`);
-            const transcriptContent = `Title: ${title || file.name}\nDate: ${new Date().toISOString()}\nParticipants: ${participants || 'N/A'}\n\n${textContent}`;
+            const transcriptContent = `Title: ${title || file.name}\nDate: ${new Date().toISOString()}\n\n${textContent}`;
             await writeFile(transcriptPath, transcriptContent);
             
             // Create a basic transcription structure for consistency
@@ -162,7 +162,7 @@ export async function POST(request: NextRequest) {
 
             // Save transcript as plain text for RAG upload
             transcriptPath = path.join(uploadsDir, "transcript.txt");
-            const transcriptContent = `Title: ${title || file.name}\nDate: ${new Date().toISOString()}\nParticipants: ${participants || 'N/A'}\n\n${transcription.text}`;
+            const transcriptContent = `Title: ${title || file.name}\nDate: ${new Date().toISOString()}\n\n${transcription.text}`;
             await writeFile(transcriptPath, transcriptContent);
 
             // Extract Notes in each requested language
@@ -239,7 +239,6 @@ export async function POST(request: NextRequest) {
             mimeType: file.type,
             fileType: fileType || (file.type === 'text/plain' ? 'text' : 'audio'),
             title: title || file.name,
-            participants: participants || '',
             notes: notes || '',
             projectName,
             displayName,

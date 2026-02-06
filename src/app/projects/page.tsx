@@ -89,12 +89,6 @@ export default function ProjectsPage() {
             // Use project.name (RAG store resource name) as the identifier
             const response = await fetch(`/api/projects/${encodeURIComponent(projectToDelete.name)}`, {
                 method: 'DELETE',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    ragStoreName: projectToDelete.ragStoreName,
-                }),
             });
 
             if (!response.ok) {
