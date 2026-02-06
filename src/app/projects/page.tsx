@@ -90,6 +90,12 @@ export default function ProjectsPage() {
             setIsDeleting(true);
             const response = await fetch(`/api/projects/${projectToDelete.id}`, {
                 method: 'DELETE',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    ragStoreName: projectToDelete.ragStoreName,
+                }),
             });
 
             if (!response.ok) {

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { initialize, deleteRagStore, getProjectRagStore } from '@/lib/fileSearch';
+import { initialize, deleteRagStore, listAllProjects } from '@/lib/fileSearch';
 
 // Initialize AI on module load
 initialize();
@@ -19,10 +19,30 @@ export async function DELETE(
             );
         }
 
-        // Get the project's RAG store name
-        const ragStoreName = await getProjectRagStore(projectId);
+        // Check if ragStoreName is provided in the request body (more efficient)
+        let ragStoreName: string | undefined;
+        try {
+            const body = await request.json();
+            ragStoreName = body.ragStoreName;
+        } catch {
+            // No body provided, will look up from projects list
+        }
 
-        // Delete the RAG store
+        if (!ragStoreName) {
+            // Find the project to get its actual ragStoreName
+            const projects = await listAllProjects();
+            const project = projects.find(p => p.id === projectId);
+            
+            if (!project) {
+                return NextResponse.json(
+                    { error: 'Project not found' },
+                    { status: 404 }
+                );
+            }
+            ragStoreName = project.ragStoreName;
+        }
+
+        // Delete the RAG store using the actual store name
         await deleteRagStore(ragStoreName);
 
         return NextResponse.json({

@@ -551,9 +551,11 @@ export async function listAllProjects(): Promise<Project[]> {
                         }
                     }
                     
-                    // Last resort: generate a simple ID from store name
+                    // Last resort: use the displayName as ID (it's unique per store)
+                    // This ensures uniqueness since each RAG store has a unique displayName
                     if (!projectId) {
-                        projectId = store.name.split('/').pop() || crypto.randomUUID();
+                        projectId = store.displayName;
+                        projectName = store.displayName;
                     }
                 }
                 
@@ -573,19 +575,20 @@ export async function listAllProjects(): Promise<Project[]> {
             }
         }
         
-        // Remove duplicates by projectId (keep the one with more meetings or newer)
+        // Remove duplicates by ragStoreName (the actual unique identifier)
         const uniqueProjects = new Map<string, typeof allProjects[0]>();
         for (const project of allProjects) {
-            const existing = uniqueProjects.get(project.id);
+            // Use ragStoreName as the key since it's guaranteed unique
+            const existing = uniqueProjects.get(project.ragStoreName);
             if (!existing) {
-                uniqueProjects.set(project.id, project);
+                uniqueProjects.set(project.ragStoreName, project);
             } else {
                 // Keep the project with more meetings, or the newer one if equal
                 if (project.meetingCount > existing.meetingCount ||
                     (project.meetingCount === existing.meetingCount && 
                      new Date(project.createdAt) > new Date(existing.createdAt))) {
-                    console.warn(`Duplicate project detected: ${project.id}, keeping newer/fuller version`);
-                    uniqueProjects.set(project.id, project);
+                    console.warn(`Duplicate project detected: ${project.ragStoreName}, keeping newer/fuller version`);
+                    uniqueProjects.set(project.ragStoreName, project);
                 }
             }
         }
