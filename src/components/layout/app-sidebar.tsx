@@ -71,17 +71,17 @@ export function AppSidebar() {
     const pathname = usePathname();
 
     return (
-        <Sidebar collapsible="icon" variant="sidebar">
+        <Sidebar collapsible="icon" variant="floating" className="z-50">
             <SidebarHeader>
                 <SidebarMenu>
                     <SidebarMenuItem>
-                        <SidebarMenuButton size="lg" asChild>
+                        <SidebarMenuButton size="lg" asChild className="group-data-[collapsible=icon]:p-0">
                             <Link href="/dashboard" className="flex items-center gap-3">
-                                <div className="flex size-9 items-center justify-center rounded-lg bg-gradient-to-br from-primary to-accent text-primary-foreground">
+                                <div className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-lg shadow-primary/25">
                                     <Sparkles className="size-5" />
                                 </div>
-                                <div className="flex flex-col gap-0.5 leading-none">
-                                    <span className="font-semibold text-lg">Remembry</span>
+                                <div className="flex flex-col gap-0.5 leading-none group-data-[collapsible=icon]:hidden">
+                                    <span className="font-semibold text-lg tracking-tight">Remembry</span>
                                     <span className="text-xs text-muted-foreground">AI Meeting Notes</span>
                                 </div>
                             </Link>
@@ -101,6 +101,7 @@ export function AppSidebar() {
                                         asChild
                                         isActive={pathname === item.url || pathname.startsWith(item.url + "/")}
                                         tooltip={item.title}
+                                        className="rounded-lg transition-all duration-200"
                                     >
                                         <Link href={item.url}>
                                             <item.icon className="size-4" />
@@ -123,6 +124,7 @@ export function AppSidebar() {
                                         asChild
                                         isActive={pathname === item.url || pathname.startsWith(item.url + "/")}
                                         tooltip={item.title}
+                                        className="rounded-lg transition-all duration-200"
                                     >
                                         <Link href={item.url}>
                                             <item.icon className="size-4" />
@@ -135,52 +137,6 @@ export function AppSidebar() {
                     </SidebarGroupContent>
                 </SidebarGroup>
             </SidebarContent>
-
-            <SidebarFooter>
-                <SidebarMenu>
-                    <SidebarMenuItem>
-                        <DropdownMenu>
-                            <DropdownMenuTrigger asChild suppressHydrationWarning>
-                                <SidebarMenuButton
-                                    size="lg"
-                                    className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
-                                    suppressHydrationWarning
-                                >
-                                    <Avatar className="size-8">
-                                        <AvatarImage src="" alt="User avatar" />
-                                        <AvatarFallback className="bg-primary/10 text-primary">
-                                            <User className="size-4" />
-                                        </AvatarFallback>
-                                    </Avatar>
-                                    <div className="flex flex-col gap-0.5 leading-none text-left">
-                                        <span className="text-sm font-medium">Guest User</span>
-                                        <span className="text-xs text-muted-foreground">Not connected</span>
-                                    </div>
-                                    <ChevronUp className="ml-auto size-4" />
-                                </SidebarMenuButton>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent
-                                className="w-[--radix-dropdown-menu-trigger-width] min-w-56 rounded-lg"
-                                side="top"
-                                align="start"
-                                sideOffset={4}
-                            >
-                                <DropdownMenuItem asChild>
-                                    <Link href="/settings" className="cursor-pointer">
-                                        <Settings className="mr-2 size-4" />
-                                        Settings
-                                    </Link>
-                                </DropdownMenuItem>
-                                <DropdownMenuSeparator />
-                                <DropdownMenuItem className="text-destructive cursor-pointer">
-                                    <LogOut className="mr-2 size-4" />
-                                    Sign Out
-                                </DropdownMenuItem>
-                            </DropdownMenuContent>
-                        </DropdownMenu>
-                    </SidebarMenuItem>
-                </SidebarMenu>
-            </SidebarFooter>
             <SidebarRail />
         </Sidebar>
     );

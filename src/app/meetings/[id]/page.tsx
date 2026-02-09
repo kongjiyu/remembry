@@ -329,19 +329,6 @@ export default async function MeetingDetailPage({
                             </div>
                         </CardContent>
                     </Card>
-                    <Card>
-                        <CardContent className="flex items-center gap-3 p-4">
-                            <div className="flex size-10 items-center justify-center rounded-lg bg-orange-500/10">
-                                <Hash className="size-5 text-orange-500" />
-                            </div>
-                            <div>
-                                <p className="text-sm text-muted-foreground">Language</p>
-                                <p className="text-lg font-semibold uppercase">
-                                    {transcription.language || "EN"}
-                                </p>
-                            </div>
-                        </CardContent>
-                    </Card>
                 </div>
 
                 <Tabs defaultValue="notes" className="space-y-6">

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { NotesLanguageSwitcher } from "@/components/ui/notes-language-switcher";
@@ -36,27 +36,39 @@ export function MeetingNotesDisplay({
     initialLanguage = 'en'
 }: MeetingNotesDisplayProps) {
     const [notes, setNotes] = useState<MeetingNotes | null>(initialNotes);
-    const [currentLanguage, setCurrentLanguage] = useState(initialLanguage);
+    const [availableLanguages, setAvailableLanguages] = useState<string[]>([initialLanguage]);
+
+    useEffect(() => {
+        // Fetch available languages for this meeting
+        const fetchMetadata = async () => {
+            try {
+                const response = await fetch(`/api/meetings/${encodeURIComponent(meetingId)}/metadata`);
+                if (response.ok) {
+                    const data = await response.json();
+                    setAvailableLanguages(data.availableLanguages || [initialLanguage]);
+                }
+            } catch (error) {
+                console.error('Error fetching metadata:', error);
+            }
+        };
+        fetchMetadata();
+    }, [meetingId, initialLanguage]);
 
     const handleNotesChange = (newNotes: MeetingNotes, language: string) => {
         setNotes(newNotes);
-        setCurrentLanguage(language);
     };
 
     return (
         <div className="space-y-6">
-            {/* Language Switcher Header */}
-            <div className="flex items-center justify-between">
-                <h3 className="text-sm font-medium text-muted-foreground">
-                    Notes Language
-                </h3>
-                <NotesLanguageSwitcher
+            {/* Language Switcher */}
+            <div className="flex justify-end">
+                <NotesLanguageSwitcher 
                     meetingId={meetingId}
-                    currentLanguage={currentLanguage}
+                    availableLanguages={availableLanguages}
+                    currentLanguage={initialLanguage}
                     onNotesChange={handleNotesChange}
                 />
             </div>
-
             {notes ? (
                 <>
                     {/* Summary */}

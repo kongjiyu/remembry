@@ -197,23 +197,23 @@ export default function MeetingsPage() {
                             return (
                                 <Card key={meeting.name || index} className="group hover:shadow-lg transition-all hover:border-primary/50 relative">
                                     <CardHeader className="pb-3">
-                                        <div className="flex items-start justify-between">
-                                            <div className="flex items-center gap-3">
-                                                <div className="flex size-10 items-center justify-center rounded-lg bg-primary/10">
+                                        <div className="flex items-start justify-between gap-2 min-w-0">
+                                            <div className="flex items-start gap-3 min-w-0 flex-1">
+                                                <div className="flex size-10 items-center justify-center rounded-lg bg-primary/10 flex-shrink-0">
                                                     <Mic className="size-5 text-primary" />
                                                 </div>
-                                                <div>
-                                                    <CardTitle className="text-base line-clamp-1">
+                                                <div className="min-w-0 flex-1">
+                                                    <CardTitle className="text-base break-words">
                                                         {meeting.displayName || 'Untitled Meeting'}
                                                     </CardTitle>
-                                                    <CardDescription>
+                                                    <CardDescription className="break-words">
                                                         {formatDate(meeting.uploadTime)} · {formatTime(meeting.uploadTime)}
                                                     </CardDescription>
                                                 </div>
                                             </div>
                                             <DropdownMenu>
                                                 <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                                                    <Button variant="ghost" size="icon" className="size-8 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                    <Button variant="ghost" size="icon" className="size-8 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
                                                         <MoreVertical className="size-4" />
                                                     </Button>
                                                 </DropdownMenuTrigger>
@@ -232,9 +232,9 @@ export default function MeetingsPage() {
                                         </div>
                                     </CardHeader>
                                     <CardContent className="pt-0">
-                                        <div className="flex items-center gap-2 mb-3">
-                                            <FolderKanban className="size-3 text-muted-foreground" />
-                                            <span className="text-sm text-muted-foreground truncate">
+                                        <div className="flex items-start gap-2 mb-3">
+                                            <FolderKanban className="size-3 text-muted-foreground mt-1 flex-shrink-0" />
+                                            <span className="text-sm text-muted-foreground break-words">
                                                 {meeting.projectDisplayName}
                                             </span>
                                         </div>

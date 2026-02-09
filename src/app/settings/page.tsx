@@ -1,92 +1,75 @@
+"use client";
+
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
-import { User, Bell, Palette } from "lucide-react";
+import { Palette, Moon, Sun, Monitor } from "lucide-react";
+import { useTheme } from "next-themes";
+import { useEffect, useState } from "react";
 
 export default function SettingsPage() {
+    const { theme, setTheme } = useTheme();
+    const [mounted, setMounted] = useState(false);
+
+    // Prevent hydration mismatch
+    useEffect(() => {
+        setMounted(true);
+    }, []);
+
+    if (!mounted) {
+        return (
+            <DashboardLayout breadcrumbs={[{ label: "Settings" }]} title="Settings">
+                <div className="max-w-3xl animate-pulse">
+                    <div className="h-48 bg-muted rounded-xl"></div>
+                </div>
+            </DashboardLayout>
+        );
+    }
+
     return (
         <DashboardLayout breadcrumbs={[{ label: "Settings" }]} title="Settings">
             <div className="max-w-3xl space-y-6">
-                {/* Profile Section */}
-                <Card>
+                {/* Appearance / Preferences */}
+                <Card className="border-none shadow-sm bg-card/50 backdrop-blur-xl">
                     <CardHeader>
                         <div className="flex items-center gap-3">
-                            <User className="size-5 text-muted-foreground" />
+                            <div className="p-2 rounded-lg bg-primary/10 text-primary">
+                                <Palette className="size-5" />
+                            </div>
                             <div>
-                                <CardTitle>Profile</CardTitle>
-                                <CardDescription>Manage your account settings</CardDescription>
+                                <CardTitle>Appearance</CardTitle>
+                                <CardDescription>Customize how Remembry looks on your device</CardDescription>
                             </div>
                         </div>
                     </CardHeader>
-                    <CardContent className="space-y-4">
-                        <div className="grid gap-4 sm:grid-cols-2">
-                            <div className="space-y-2">
-                                <label htmlFor="name" className="text-sm font-medium">
-                                    Display Name
-                                </label>
-                                <Input id="name" placeholder="Your name" defaultValue="Guest User" />
-                            </div>
-                            <div className="space-y-2">
-                                <label htmlFor="email" className="text-sm font-medium">
-                                    Email
-                                </label>
-                                <Input id="email" type="email" placeholder="you@example.com" />
-                            </div>
-                        </div>
-                        <Button>Save Changes</Button>
-                    </CardContent>
-                </Card>
-
-                {/* Preferences */}
-                <Card>
-                    <CardHeader>
-                        <div className="flex items-center gap-3">
-                            <Palette className="size-5 text-muted-foreground" />
-                            <div>
-                                <CardTitle>Preferences</CardTitle>
-                                <CardDescription>Customize your experience</CardDescription>
-                            </div>
-                        </div>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                        <div className="flex items-center justify-between">
-                            <div>
-                                <p className="font-medium">Theme</p>
-                                <p className="text-sm text-muted-foreground">Choose your preferred theme</p>
-                            </div>
-                            <Badge variant="secondary">Dark Mode</Badge>
-                        </div>
-                        <div className="flex items-center justify-between">
-                            <div>
-                                <p className="font-medium">Default Language</p>
-                                <p className="text-sm text-muted-foreground">Primary language for transcription</p>
-                            </div>
-                            <Badge variant="secondary">English</Badge>
-                        </div>
-                    </CardContent>
-                </Card>
-
-                {/* Notifications */}
-                <Card>
-                    <CardHeader>
-                        <div className="flex items-center gap-3">
-                            <Bell className="size-5 text-muted-foreground" />
-                            <div>
-                                <CardTitle>Notifications</CardTitle>
-                                <CardDescription>Manage notification preferences</CardDescription>
-                            </div>
-                        </div>
-                    </CardHeader>
-                    <CardContent>
+                    <CardContent className="space-y-6">
                         <div className="space-y-4">
-                            <div className="flex items-center justify-between">
-                                <div>
-                                    <p className="font-medium">Processing Complete</p>
-                                    <p className="text-sm text-muted-foreground">Notify when transcription is ready</p>
-                                </div>
-                                <Badge className="bg-success/10 text-success border-success/20">Enabled</Badge>
+                            <p className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Theme Mode</p>
+                            <div className="grid grid-cols-3 gap-4">
+                                <Button
+                                    variant={theme === "light" ? "default" : "outline"}
+                                    className="flex flex-col items-center gap-2 h-24 rounded-xl transition-all"
+                                    onClick={() => setTheme("light")}
+                                >
+                                    <Sun className="size-5" />
+                                    <span>Light</span>
+                                </Button>
+                                <Button
+                                    variant={theme === "dark" ? "default" : "outline"}
+                                    className="flex flex-col items-center gap-2 h-24 rounded-xl transition-all"
+                                    onClick={() => setTheme("dark")}
+                                >
+                                    <Moon className="size-5" />
+                                    <span>Dark</span>
+                                </Button>
+                                <Button
+                                    variant={theme === "system" ? "default" : "outline"}
+                                    className="flex flex-col items-center gap-2 h-24 rounded-xl transition-all"
+                                    onClick={() => setTheme("system")}
+                                >
+                                    <Monitor className="size-5" />
+                                    <span>System</span>
+                                </Button>
                             </div>
                         </div>
                     </CardContent>

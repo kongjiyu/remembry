@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { AudioRecorder } from "@/components/ui/audio-recorder";
-import { Upload, Mic, FileAudio, FileText, X, Loader2, FolderKanban, Plus, Download, Languages, Check } from "lucide-react";
+import { Upload, Mic, FileAudio, FileText, X, Loader2, FolderKanban, Plus, Download } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
     DropdownMenu,
@@ -18,22 +18,6 @@ import {
 } from "@/components/ui/dropdown-menu";
 import Link from "next/link";
 import { toast } from "sonner";
-
-// Supported languages for meeting notes
-const SUPPORTED_LANGUAGES = [
-    { code: 'en', name: 'English' },
-    { code: 'zh', name: '中文 (Chinese)' },
-    { code: 'ms', name: 'Bahasa Melayu' },
-    { code: 'ja', name: '日本語 (Japanese)' },
-    { code: 'ko', name: '한국어 (Korean)' },
-    { code: 'es', name: 'Español (Spanish)' },
-    { code: 'fr', name: 'Français (French)' },
-    { code: 'de', name: 'Deutsch (German)' },
-    { code: 'pt', name: 'Português (Portuguese)' },
-    { code: 'th', name: 'ไทย (Thai)' },
-    { code: 'vi', name: 'Tiếng Việt (Vietnamese)' },
-    { code: 'id', name: 'Bahasa Indonesia' },
-] as const;
 
 interface Project {
     name: string;          // RAG store resource name - acts as primary key
@@ -82,7 +66,6 @@ export default function NewMeetingPage() {
     // Form state
     const [title, setTitle] = useState("");
     const [notes, setNotes] = useState("");
-    const [notesLanguages, setNotesLanguages] = useState<string[]>(["en"]);
     
     // Project selection
     const [projects, setProjects] = useState<Project[]>([]);
@@ -219,7 +202,7 @@ export default function NewMeetingPage() {
             formData.append('fileType', uploadedFile.fileType); // 'audio' or 'text'
             // Removed participants as requested in the new feature
             formData.append('notes', notes);
-            formData.append('notesLanguages', JSON.stringify(notesLanguages));
+            formData.append('notesLanguages', JSON.stringify(["en"]));
             if (uploadedFile.duration) {
                 formData.append('duration', uploadedFile.duration.toString());
             }
@@ -491,63 +474,6 @@ export default function NewMeetingPage() {
                                 onChange={(e) => setNotes(e.target.value)}
                                 rows={3}
                             />
-                        </div>
-
-                        {/* Notes Language Selection - Multiple */}
-                        <div className="space-y-2">
-                            <label className="text-sm font-medium flex items-center gap-2">
-                                <Languages className="size-4" />
-                                Meeting Notes Languages
-                            </label>
-                            <div className="flex flex-wrap gap-2 p-3 border rounded-lg min-h-[42px]">
-                                {notesLanguages.length === 0 ? (
-                                    <span className="text-muted-foreground text-sm">Select at least one language</span>
-                                ) : (
-                                    notesLanguages.map((code) => {
-                                        const lang = SUPPORTED_LANGUAGES.find(l => l.code === code);
-                                        return (
-                                            <span
-                                                key={code}
-                                                className="inline-flex items-center gap-1 px-2 py-1 bg-primary/10 text-primary rounded-md text-sm"
-                                            >
-                                                {lang?.name}
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setNotesLanguages(prev => prev.filter(l => l !== code))}
-                                                    className="hover:bg-primary/20 rounded-full p-0.5"
-                                                >
-                                                    <X className="size-3" />
-                                                </button>
-                                            </span>
-                                        );
-                                    })
-                                )}
-                            </div>
-                            <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                    <Button variant="outline" size="sm" className="w-full justify-between">
-                                        <span>Add language</span>
-                                        <Plus className="size-4" />
-                                    </Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="start" className="w-[300px] max-h-[300px] overflow-y-auto">
-                                    {SUPPORTED_LANGUAGES.filter(lang => !notesLanguages.includes(lang.code)).map((lang) => (
-                                        <DropdownMenuItem
-                                            key={lang.code}
-                                            onClick={() => setNotesLanguages(prev => [...prev, lang.code])}
-                                            className="flex items-center justify-between"
-                                        >
-                                            <span>{lang.name}</span>
-                                        </DropdownMenuItem>
-                                    ))}
-                                    {SUPPORTED_LANGUAGES.filter(lang => !notesLanguages.includes(lang.code)).length === 0 && (
-                                        <div className="p-2 text-sm text-muted-foreground text-center">All languages selected</div>
-                                    )}
-                                </DropdownMenuContent>
-                            </DropdownMenu>
-                            <p className="text-xs text-muted-foreground">
-                                Select multiple languages. AI will generate meeting notes in each selected language. Technical terms will be preserved.
-                            </p>
                         </div>
                     </CardContent>
                 </Card>
