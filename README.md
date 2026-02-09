@@ -28,7 +28,7 @@ graph LR
 
 ### Frontend
 
-- **Framework:** Next.js 14+ (App Router)
+- **Framework:** Next.js 16 (App Router)
 - **Styling:** Tailwind CSS + shadcn/ui
 - **State Management:** React Context
 - **File Upload:** Native file input + drag-and-drop
@@ -41,8 +41,8 @@ graph LR
 ### AI & Services
 
 - **Transcription:** Gemini 3 Flash (with auto-chunking for long files)
-- **AI Processing:** Gemini 3 Flash/Pro (structured output extraction)
-- **RAG Search:** Vertex AI RAG Store (semantic search across meetings)
+- **AI Processing:** Gemini 3 Flash (structured output extraction)
+- **RAG Search:** Google AI File Search API (semantic search across meetings)
 
 ## 📋 Key Features
 
@@ -74,7 +74,7 @@ graph LR
 - Extract key topics and assumptions
 - **Multi-language notes output** - generate notes in multiple languages simultaneously
 
-### Module 4: RAG Search (Vertex AI)
+### Module 4: RAG Search (Google AI File Search)
 
 - Semantic search across all meetings
 - "When did we decide X?" queries with source citations
@@ -100,9 +100,9 @@ graph TD
   
     subgraph "Backend Layer (Next.js API)"
         API[API Routes] -->|Streams File| Storage[Local Storage /uploads]
-        API -->|1. Transcribes| GeminiFlash[Gemini 1.5/2.0 Flash]
-        API -->|2. Extracts Intelligence| GeminiPro[Gemini 1.5/2.0 Pro]
-        API -->|3. Indexes Content| VertexRAG[Vertex AI RAG Store]
+        API -->|1. Transcribes| GeminiFlash[Gemini 3 Flash]
+        API -->|2. Extracts Intelligence| GeminiPro[Gemini 3 Flash]
+        API -->|3. Indexes Content| FileSearch[Google AI File Search]
     end
   
     subgraph "AI Processing Pipeline"
@@ -113,8 +113,8 @@ graph TD
     end
   
     User -->|Asks Question| Client
-    Client -->|Search Query| VertexRAG
-    VertexRAG -->|Retrieved Context| GeminiPro
+    Client -->|Search Query| FileSearch
+    FileSearch -->|Retrieved Context| GeminiPro
     GeminiPro -->|Synthesized Answer| Client
 ```
 
@@ -140,50 +140,13 @@ We leverage Gemini 3's multilingual capabilities to generate notes in 12+ langua
 
 ### 4. RAG-based Semantic Search
 
-Our "Ask My Meetings" feature uses a RAG pipeline. When a user asks a question, we retrieve relevant meeting chunks from the Vertex AI RAG Store and use Gemini 3 to synthesize a grounded answer, citing the specific meeting and timestamp.
-
-## 🚀 Getting Started
-
-### Prerequisites
-
-- Node.js 18+
-- Google Cloud account (for Gemini API and Vertex AI)
-
-### Installation
-
-```bash
-# Install dependencies
-npm install
-
-# Set up environment variables
-cp .env.example .env.local
-# Edit .env.local with your API keys
-
-# Run the development server
-npm run dev
-```
-
-Open [http://localhost:3000](http://localhost:3000) to see the application.
-
-### Environment Variables
-
-```bash
-# Google Cloud / Gemini
-GEMINI_API_KEY=your-gemini-api-key
-GOOGLE_CLOUD_PROJECT=your-project-id
-GOOGLE_APPLICATION_CREDENTIALS=path/to/service-account.json
-
-# Authentication (optional)
-NEXTAUTH_URL=http://localhost:3000
-NEXTAUTH_SECRET=your-secret-key
-```
+Our "Ask My Meetings" feature uses a RAG pipeline. When a user asks a question, we retrieve relevant meeting chunks from the **Google AI File Search API** and use Gemini 3 to synthesize a grounded answer, citing the specific meeting and timestamp.
 
 ## Getting Started
 
 ### Prerequisites
 
 - Node.js 18.0.0 or later
-- A Google Cloud Project with Vertex AI API enabled (optional, for advanced RAG)
 - A Google Gemini API Key
 
 ### Installation
@@ -191,7 +154,7 @@ NEXTAUTH_SECRET=your-secret-key
 1. **Clone the repository**
 
    ```bash
-   git clone https://github.com/yourusername/remembry.git
+   git clone https://github.com/kongjiyu/remembry.git
    cd remembry
    ```
 2. **Install dependencies**
@@ -226,7 +189,7 @@ NEXTAUTH_SECRET=your-secret-key
 5. **Open the App**
    Visit [http://localhost:3000](http://localhost:3000) in your browser.
 
-## 🀽� Project Structure
+## 📁 Project Structure
 
 ```
 remembry/
