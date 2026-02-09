@@ -1,6 +1,6 @@
 # Remembry - AI Meeting Notes
 
-> **Version:** 1.0  
+> **Version:** 1.0
 > **Status:** In Development
 
 An intelligent platform that transforms meeting recordings into structured, actionable meeting notes. Powered by Gemini AI for transcription, intelligent extraction, and semantic search.
@@ -8,6 +8,7 @@ An intelligent platform that transforms meeting recordings into structured, acti
 ## 🎯 Vision
 
 Automatically convert meeting recordings into comprehensive notes with:
+
 - **Accurate transcription** with speaker diarization
 - **Smart extraction** of decisions, action items, and Q&A pairs
 - **Multi-language support** for meeting notes output
@@ -15,25 +16,30 @@ Automatically convert meeting recordings into comprehensive notes with:
 
 ## 🔄 Core User Flow
 
-```
-Record/Upload Audio → Transcription (Speaker Diarization) → AI Processing (Gemini 3)
-       ↓                                                              ↓
-   Save to RAG ←────────────── Meeting Notes + Tasks (Markdown)
+```mermaid
+graph LR
+    A[Record/Upload Audio] --> B[Transcription\nSpeaker Diarization]
+    B --> C[AI Processing\nGemini 3]
+    C --> D[Meeting Notes + Tasks]
+    D --> E[Save to RAG]
 ```
 
 ## 🛠️ Tech Stack
 
 ### Frontend
+
 - **Framework:** Next.js 14+ (App Router)
 - **Styling:** Tailwind CSS + shadcn/ui
 - **State Management:** React Context
 - **File Upload:** Native file input + drag-and-drop
 
 ### Backend
+
 - **Framework:** Next.js API Routes
 - **Storage:** Local file system (uploads/)
 
 ### AI & Services
+
 - **Transcription:** Gemini 3 Flash (with auto-chunking for long files)
 - **AI Processing:** Gemini 3 Flash/Pro (structured output extraction)
 - **RAG Search:** Vertex AI RAG Store (semantic search across meetings)
@@ -41,6 +47,7 @@ Record/Upload Audio → Transcription (Speaker Diarization) → AI Processing (G
 ## 📋 Key Features
 
 ### Module 1: Audio Ingestion
+
 - Upload audio files (MP3, WAV, M4A, WebM, MP4)
 - **In-browser audio recording** with microphone access
   - Start/stop/pause/resume recording controls
@@ -51,6 +58,7 @@ Record/Upload Audio → Transcription (Speaker Diarization) → AI Processing (G
 - Audio file validation (size, format)
 
 ### Module 2: Transcription
+
 - Automatic transcription using **Gemini 3 Flash**
 - **Audio chunking** for large files
 - Multi-speaker diarization
@@ -58,6 +66,7 @@ Record/Upload Audio → Transcription (Speaker Diarization) → AI Processing (G
 - Real-time processing status updates
 
 ### Module 3: AI Extraction
+
 - Generate meeting summary
 - Extract decisions made
 - Extract action items
@@ -66,19 +75,77 @@ Record/Upload Audio → Transcription (Speaker Diarization) → AI Processing (G
 - **Multi-language notes output** - generate notes in multiple languages simultaneously
 
 ### Module 4: RAG Search (Vertex AI)
+
 - Semantic search across all meetings
 - "When did we decide X?" queries with source citations
 - Project-based organization
 - Deep links to meeting details
 
 ### Module 5: Projects
+
 - Organize meetings by project
 - Each project has its own RAG store
 - Project-level search and analytics
 
+## 🏗️ System Architecture
+
+```mermaid
+graph TD
+    User[User] -->|Uploads Audio/Video| Client[Next.js Client]
+  
+    subgraph "Frontend Layer"
+        Client -->|Records Audio| Recorder[Audio Recorder]
+        Client -->|Manages State| Context[React Context]
+    end
+  
+    subgraph "Backend Layer (Next.js API)"
+        API[API Routes] -->|Streams File| Storage[Local Storage /uploads]
+        API -->|1. Transcribes| GeminiFlash[Gemini 1.5/2.0 Flash]
+        API -->|2. Extracts Intelligence| GeminiPro[Gemini 1.5/2.0 Pro]
+        API -->|3. Indexes Content| VertexRAG[Vertex AI RAG Store]
+    end
+  
+    subgraph "AI Processing Pipeline"
+        GeminiFlash -->|Raw Transcript| JSON[Structured JSON Output]
+        JSON -->|Decisions| DB[Meeting Database]
+        JSON -->|Action Items| DB
+        JSON -->|Multilingual Notes| DB
+    end
+  
+    User -->|Asks Question| Client
+    Client -->|Search Query| VertexRAG
+    VertexRAG -->|Retrieved Context| GeminiPro
+    GeminiPro -->|Synthesized Answer| Client
+```
+
+## 🧠 Gemini Integration
+
+Remembry is powered entirely by the **Gemini 3 Flash** model (`gemini-3-flash-preview`), leveraging its speed, multimodal capabilities, and massive context window.
+
+### 1. Unified Transcription & Reasoning
+
+We use Gemini 3 Flash to handle both transcription and reasoning in a single pass. The 1M+ token context window allows us to process hour-long meetings as a single context block, ensuring that references made at the end of a meeting correctly resolve to context established at the beginning.
+
+### 2. Structured Intelligence Extraction
+
+Instead of simple summaries, we force **JSON structured outputs** to create a database of record:
+
+- **Decisions:** Extracted agreements with context.
+- **Action Items:** Tasks assigned to specific owners.
+- **Q&A Pairs:** Logical grouping of questions and valid answers.
+
+### 3. Multilingual Reasoning
+
+We leverage Gemini 3's multilingual capabilities to generate notes in 12+ languages. The model is instructed to **preserve technical domain terminology** (e.g., "RAG", "Next.js", "API") in the original language while translating the surrounding context, ensuring professional-grade output.
+
+### 4. RAG-based Semantic Search
+
+Our "Ask My Meetings" feature uses a RAG pipeline. When a user asks a question, we retrieve relevant meeting chunks from the Vertex AI RAG Store and use Gemini 3 to synthesize a grounded answer, citing the specific meeting and timestamp.
+
 ## 🚀 Getting Started
 
 ### Prerequisites
+
 - Node.js 18+
 - Google Cloud account (for Gemini API and Vertex AI)
 
@@ -111,7 +178,55 @@ NEXTAUTH_URL=http://localhost:3000
 NEXTAUTH_SECRET=your-secret-key
 ```
 
-## 📁 Project Structure
+## Getting Started
+
+### Prerequisites
+
+- Node.js 18.0.0 or later
+- A Google Cloud Project with Vertex AI API enabled (optional, for advanced RAG)
+- A Google Gemini API Key
+
+### Installation
+
+1. **Clone the repository**
+
+   ```bash
+   git clone https://github.com/yourusername/remembry.git
+   cd remembry
+   ```
+2. **Install dependencies**
+
+   ```bash
+   npm install
+   # or
+   yarn install
+   # or
+   pnpm install
+   ```
+3. **Environment Setup**
+   Copy the example environment file and configure your keys:
+
+   ```bash
+   cp .env.example .env
+   ```
+
+   Open `.env` and add your API keys:
+
+   ```env
+   # Required for all AI features
+   GEMINI_API_KEY=your_gemini_api_key_here
+   ```
+
+   *Get your key at [Google AI Studio](https://aistudio.google.com/app/apikey)*
+4. **Run the Development Server**
+
+   ```bash
+   npm run dev
+   ```
+5. **Open the App**
+   Visit [http://localhost:3000](http://localhost:3000) in your browser.
+
+## 🀽� Project Structure
 
 ```
 remembry/
@@ -138,21 +253,3 @@ remembry/
 ├── public/                     # Static assets
 └── package.json
 ```
-
-## 🎯 Development Roadmap
-
-### Phase 1: MVP (Current)
-- [x] Frontend: Basic UI with meeting upload
-- [x] Backend: Audio transcription with Gemini
-- [x] AI extraction of meeting notes
-- [x] Multi-language notes support
-- [x] Basic meeting list and details view
-- [x] Project-based organization
-- [x] RAG-based semantic search
-
-### Phase 2: Enhanced Features
-- [ ] Advanced analytics and insights
-- [ ] Action item tracking and notifications
-- [ ] Improved speaker diarization
-- [ ] Meeting templates
-- [ ] Team collaboration features

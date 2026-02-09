@@ -14,7 +14,12 @@ let ai: GoogleGenAI;
 
 export function initialize() {
     if (!ai) {
-        ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+        // Use GEMINI_API_KEY to match other parts of the app and .env
+        const apiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
+        if (!apiKey) {
+            throw new Error("GEMINI_API_KEY is not set in environment variables");
+        }
+        ai = new GoogleGenAI({ apiKey });
     }
 }
 
