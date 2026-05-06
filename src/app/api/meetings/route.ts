@@ -44,7 +44,9 @@ export async function GET() {
         // Combine meetings with project info
         const combinedMeetings: MeetingWithProject[] = (meetings || []).map(m => ({
             id: m.id,
+            name: m.id,
             title: m.title,
+            displayName: m.title,
             project_id: m.project_id,
             projectName: m.project_id,
             projectDisplayName: projectMap.get(m.project_id) || "Unknown Project",
