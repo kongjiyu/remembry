@@ -27,10 +27,7 @@ import {
 import {
     LayoutDashboard,
     Mic,
-    Search,
     Settings,
-    LogOut,
-    User,
     ChevronUp,
     Sparkles,
     FolderKanban,
@@ -39,7 +36,7 @@ import {
 const navItems = [
     {
         title: "Dashboard",
-        url: "/dashboard",
+        url: "/",
         icon: LayoutDashboard,
     },
     {
@@ -51,11 +48,6 @@ const navItems = [
         title: "Meetings",
         url: "/meetings",
         icon: Mic,
-    },
-    {
-        title: "Search",
-        url: "/search",
-        icon: Search,
     },
 ];
 
@@ -76,7 +68,7 @@ export function AppSidebar() {
                 <SidebarMenu>
                     <SidebarMenuItem>
                         <SidebarMenuButton size="lg" asChild className="group-data-[collapsible=icon]:p-0">
-                            <Link href="/dashboard" className="flex items-center gap-3">
+                            <Link href="/meetings" className="flex items-center gap-3">
                                 <div className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-lg shadow-primary/25">
                                     <Sparkles className="size-5" />
                                 </div>

@@ -1,4 +1,8 @@
-# Remembry - AI Meeting Notes
+# Remembry
+<!-- Logo and Title -->
+<p align="center">
+  <img src="./public/logo.svg" alt="Remembry" width="80" />
+</p>
 
 > Transform your meeting recordings into structured, actionable notes with AI.
 
@@ -6,7 +10,7 @@
 [![React](https://img.shields.io/badge/React-19-blue)](https://react.dev)
 [![License](https://img.shields.io/badge/License-MIT-green)](LICENSE)
 
-Remembry is a **self-hosted** AI-powered meeting notes application. Install it on your own computer, and access it through your browser. All your data stays local - no cloud dependencies, no subscriptions.
+**Remembry** is a **self-hosted** AI-powered meeting notes application. Install it on your own computer, and access it through your browser. All your data stays local - no cloud dependencies, no subscriptions.
 
 ## Features
 
