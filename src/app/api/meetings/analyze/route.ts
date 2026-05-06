@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { initialize, analyzeMeeting } from '@/lib/fileSearch';
+import { resolveGeminiApiKeyForRequest } from '@/lib/userKey';
 
 // Initialize AI on module load
 initialize();
@@ -8,6 +9,14 @@ export async function GET(
     request: NextRequest
 ) {
     try {
+        const apiKey = await resolveGeminiApiKeyForRequest(request);
+        if (!apiKey) {
+            return NextResponse.json(
+                { error: "Gemini API key not found. Please add your API key in Settings." },
+                { status: 400 }
+            );
+        }
+
         const searchParams = request.nextUrl.searchParams;
         const documentName = searchParams.get('documentName');
         
@@ -20,7 +29,7 @@ export async function GET(
             );
         }
 
-        const analysis = await analyzeMeeting(documentName);
+        const analysis = await analyzeMeeting(documentName, apiKey);
 
         if (!analysis) {
             return NextResponse.json(

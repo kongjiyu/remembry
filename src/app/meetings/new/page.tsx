@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import Link from "next/link";
 import { toast } from "sonner";
+import { buildUserHeaders } from "@/lib/clientUser";
 
 interface Project {
     name: string;          // RAG store resource name - acts as primary key
@@ -209,6 +210,7 @@ export default function NewMeetingPage() {
 
             const response = await fetch('/api/meetings/upload', {
                 method: 'POST',
+                headers: buildUserHeaders(),
                 body: formData,
             });
 

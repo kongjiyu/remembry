@@ -1,218 +1,211 @@
 # Remembry - AI Meeting Notes
 
-> **Version:** 1.0
-> **Status:** In Development
+> Transform your meeting recordings into structured, actionable notes with AI.
 
-An intelligent platform that transforms meeting recordings into structured, actionable meeting notes. Powered by Gemini AI for transcription, intelligent extraction, and semantic search.
+[![Next.js](https://img.shields.io/badge/Next.js-16-black)](https://nextjs.org)
+[![React](https://img.shields.io/badge/React-19-blue)](https://react.dev)
+[![License](https://img.shields.io/badge/License-MIT-green)](LICENSE)
 
-## 🎯 Vision
+Remembry is a **self-hosted** AI-powered meeting notes application. Install it on your own computer, and access it through your browser. All your data stays local - no cloud dependencies, no subscriptions.
 
-Automatically convert meeting recordings into comprehensive notes with:
+## Features
 
-- **Accurate transcription** with speaker diarization
-- **Smart extraction** of decisions, action items, and Q&A pairs
-- **Multi-language support** for meeting notes output
-- **Semantic search** across all your meetings
+### Recording & Transcription
+- **Audio Recording** - Record directly in browser with microphone
+- **File Upload** - Upload MP3, WAV, M4A, WebM, or MP4 files
+- **Speaker Diarization** - Automatic speaker identification
+- **Multi-language Support** - Works with recordings in any language
 
-## 🔄 Core User Flow
+### AI-Powered Notes
+- **Smart Extraction** - Automatically extract decisions, action items, and Q&A
+- **Multi-language Notes** - Generate notes in 12+ languages simultaneously
+- **Summary Generation** - Concise meeting summaries with key topics
 
-```mermaid
-graph LR
-    A[Record/Upload Audio] --> B[Transcription\nSpeaker Diarization]
-    B --> C[AI Processing\nGemini 3]
-    C --> D[Meeting Notes + Tasks]
-    D --> E[Save to RAG]
-```
+### Organization
+- **Project-based** - Organize meetings by project or client
+- **Semantic Search** - Ask questions like "When did we decide X?"
+- **Meeting History** - Keep track of all your meetings
 
-## 🛠️ Tech Stack
+## Screenshots
 
-### Frontend
+| Home | Meetings |
+|:---:|:---:|
+| ![Home](./public/01-home.png) | ![Meetings](./public/02-meetings.png) |
 
-- **Framework:** Next.js 16 (App Router)
-- **Styling:** Tailwind CSS + shadcn/ui
-- **State Management:** React Context
-- **File Upload:** Native file input + drag-and-drop
+| New Meeting | Settings |
+|:---:|:---:|
+| ![New Meeting](./public/03-new-meeting.png) | ![Settings](./public/04-settings.png) |
 
-### Backend
+## Tech Stack
 
-- **Framework:** Next.js API Routes
-- **Storage:** Local file system (uploads/)
+| Layer | Technology |
+|-------|------------|
+| Frontend | Next.js 16, React 19, Tailwind CSS v4, shadcn/ui |
+| AI | Google Gemini 3 Flash |
+| Database | Supabase (local) |
+| File Processing | Native browser APIs |
 
-### AI & Services
-
-- **Transcription:** Gemini 3 Flash (with auto-chunking for long files)
-- **AI Processing:** Gemini 3 Flash (structured output extraction)
-- **RAG Search:** Google AI File Search API (semantic search across meetings)
-
-## 📋 Key Features
-
-### Module 1: Audio Ingestion
-
-- Upload audio files (MP3, WAV, M4A, WebM, MP4)
-- **In-browser audio recording** with microphone access
-  - Start/stop/pause/resume recording controls
-  - Real-time duration display
-  - Audio playback preview before submission
-- Meeting metadata input (title, project, notes)
-- Upload progress indicator
-- Audio file validation (size, format)
-
-### Module 2: Transcription
-
-- Automatic transcription using **Gemini 3 Flash**
-- **Audio chunking** for large files
-- Multi-speaker diarization
-- Multi-language support
-- Real-time processing status updates
-
-### Module 3: AI Extraction
-
-- Generate meeting summary
-- Extract decisions made
-- Extract action items
-- Extract Q&A pairs
-- Extract key topics and assumptions
-- **Multi-language notes output** - generate notes in multiple languages simultaneously
-
-### Module 4: RAG Search (Google AI File Search)
-
-- Semantic search across all meetings
-- "When did we decide X?" queries with source citations
-- Project-based organization
-- Deep links to meeting details
-
-### Module 5: Projects
-
-- Organize meetings by project
-- Each project has its own RAG store
-- Project-level search and analytics
-
-## 🏗️ System Architecture
-
-```mermaid
-graph TD
-    User[User] -->|Uploads Audio/Video| Client[Next.js Client]
-  
-    subgraph "Frontend Layer"
-        Client -->|Records Audio| Recorder[Audio Recorder]
-        Client -->|Manages State| Context[React Context]
-    end
-  
-    subgraph "Backend Layer (Next.js API)"
-        API[API Routes] -->|Streams File| Storage[Local Storage /uploads]
-        API -->|1. Transcribes| GeminiFlash[Gemini 3 Flash]
-        API -->|2. Extracts Intelligence| GeminiPro[Gemini 3 Flash]
-        API -->|3. Indexes Content| FileSearch[Google AI File Search]
-    end
-  
-    subgraph "AI Processing Pipeline"
-        GeminiFlash -->|Raw Transcript| JSON[Structured JSON Output]
-        JSON -->|Decisions| DB[Meeting Database]
-        JSON -->|Action Items| DB
-        JSON -->|Multilingual Notes| DB
-    end
-  
-    User -->|Asks Question| Client
-    Client -->|Search Query| FileSearch
-    FileSearch -->|Retrieved Context| GeminiPro
-    GeminiPro -->|Synthesized Answer| Client
-```
-
-## 🧠 Gemini Integration
-
-Remembry is powered entirely by the **Gemini 3 Flash** model (`gemini-3-flash-preview`), leveraging its speed, multimodal capabilities, and massive context window.
-
-### 1. Unified Transcription & Reasoning
-
-We use Gemini 3 Flash to handle both transcription and reasoning in a single pass. The 1M+ token context window allows us to process hour-long meetings as a single context block, ensuring that references made at the end of a meeting correctly resolve to context established at the beginning.
-
-### 2. Structured Intelligence Extraction
-
-Instead of simple summaries, we force **JSON structured outputs** to create a database of record:
-
-- **Decisions:** Extracted agreements with context.
-- **Action Items:** Tasks assigned to specific owners.
-- **Q&A Pairs:** Logical grouping of questions and valid answers.
-
-### 3. Multilingual Reasoning
-
-We leverage Gemini 3's multilingual capabilities to generate notes in 12+ languages. The model is instructed to **preserve technical domain terminology** (e.g., "RAG", "Next.js", "API") in the original language while translating the surrounding context, ensuring professional-grade output.
-
-### 4. RAG-based Semantic Search
-
-Our "Ask My Meetings" feature uses a RAG pipeline. When a user asks a question, we retrieve relevant meeting chunks from the **Google AI File Search API** and use Gemini 3 to synthesize a grounded answer, citing the specific meeting and timestamp.
-
-## Getting Started
+## Installation
 
 ### Prerequisites
 
-- Node.js 18.0.0 or later
-- A Google Gemini API Key
+- **Node.js** 18.0.0 or later
+- **npm** or **pnpm**
+- **Supabase CLI** (for local database)
+- **Gemini API Key** (free tier available)
 
-### Installation
+### Step 1: Clone the Repository
 
-1. **Clone the repository**
+```bash
+git clone https://github.com/kongjiyu/remembry.git
+cd remembry
+```
 
-   ```bash
-   git clone https://github.com/kongjiyu/remembry.git
-   cd remembry
-   ```
-2. **Install dependencies**
+### Step 2: Install Dependencies
 
-   ```bash
-   npm install
-   # or
-   yarn install
-   # or
-   pnpm install
-   ```
-3. **Environment Setup**
-   Copy the example environment file and configure your keys:
+```bash
+npm install
+```
 
-   ```bash
-   cp .env.example .env
-   ```
+### Step 3: Setup Supabase (Local Database)
 
-   Open `.env` and add your API keys:
+```bash
+# Install Supabase CLI if not already installed
+npm install -g supabase
 
-   ```env
-   # Required for all AI features
-   GEMINI_API_KEY=your_gemini_api_key_here
-   ```
+# Start local Supabase
+supabase start
 
-   *Get your key at [Google AI Studio](https://aistudio.google.com/app/apikey)*
-4. **Run the Development Server**
+# Get your keys (shown in output)
+# Default: http://127.0.0.1:54321
+```
 
-   ```bash
-   npm run dev
-   ```
-5. **Open the App**
-   Visit [http://localhost:3000](http://localhost:3000) in your browser.
+### Step 4: Configure Environment
 
-## 📁 Project Structure
+Copy the example environment file:
+
+```bash
+cp .env.example .env.local
+```
+
+Edit `.env.local` with your Supabase values:
+
+```env
+# Supabase Local (from `supabase status`)
+SUPABASE_URL=http://127.0.0.1:54321
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key-here
+```
+
+### Step 5: Initialize Database
+
+Run the SQL migration in Supabase SQL Editor:
+
+```sql
+-- Paste the contents of supabase/migrations/001_initial_schema.sql
+-- Or run via psql:
+psql -h 127.0.0.1 -p 54322 -U postgres -d postgres -f supabase/migrations/001_initial_schema.sql
+```
+
+### Step 6: Start the Application
+
+```bash
+npm run dev
+```
+
+Open [http://localhost:3000](http://localhost:3000) in your browser.
+
+### Step 7: Configure API Key
+
+1. Visit [Google AI Studio](https://aistudio.google.com/app/apikey) to get a free Gemini API key
+2. Go to **Settings** in Remembry
+3. Enter your API key and click **Save**
+
+## How It Works
+
+```
+┌─────────────┐     ┌─────────────┐     ┌─────────────┐     ┌─────────────┐
+│  Record or  │────▶│ Transcribe  │────▶│  Extract    │────▶│   Store     │
+│   Upload    │     │  (Gemini 3) │     │  (Gemini 3) │     │ (Supabase)  │
+└─────────────┘     └─────────────┘     └─────────────┘     └─────────────┘
+                                              │
+                                              ▼
+                                        ┌─────────────┐
+                                        │  Ask Your   │
+                                        │  Meetings   │
+                                        └─────────────┘
+```
+
+## Project Structure
 
 ```
 remembry/
 ├── src/
-│   ├── app/                    # Next.js App Router pages
+│   ├── app/                    # Next.js App Router
 │   │   ├── api/                # API routes
-│   │   │   ├── meetings/       # Meeting CRUD and upload
+│   │   │   ├── meetings/       # Meeting CRUD, upload, analyze
 │   │   │   ├── projects/       # Project management
-│   │   │   ├── search/         # Search API
-│   │   │   └── ask/            # AI Q&A endpoint
-│   │   ├── dashboard/          # Dashboard view
-│   │   ├── meetings/           # Meeting list and details
+│   │   │   └── settings/       # Settings API
+│   │   ├── meetings/           # Meeting pages
 │   │   │   ├── new/            # Upload new meeting
 │   │   │   └── [id]/           # Meeting detail view
 │   │   ├── projects/           # Project management
-│   │   ├── search/             # Search across meetings
 │   │   └── settings/           # App settings
 │   ├── components/
-│   │   ├── layout/             # Layout components (sidebar, dashboard)
+│   │   ├── layout/             # Layout components
 │   │   └── ui/                 # shadcn/ui components
 │   ├── hooks/                  # Custom React hooks
-│   └── lib/                    # Utility functions (gemini.ts, fileSearch.ts)
-├── uploads/                    # Local meeting storage
-├── public/                     # Static assets
+│   └── lib/                    # Utility functions
+│       ├── gemini.ts           # AI transcription & extraction
+│       ├── fileSearch.ts       # RAG search
+│       └── supabase.ts         # Database client
+├── supabase/
+│   └── migrations/            # Database schema
+├── public/                     # Static assets & screenshots
 └── package.json
 ```
+
+## Database Schema
+
+Remembry uses Supabase PostgreSQL with the following tables:
+
+| Table | Description |
+|-------|-------------|
+| `projects` | Project/organization container |
+| `meetings` | Meeting records with transcription & notes |
+| `project_documents` | Document storage for RAG search |
+| `user_gemini_keys` | User's Gemini API key storage |
+
+## Commands
+
+```bash
+npm run dev      # Start development server
+npm run build    # Build for production
+npm run start    # Start production server
+npm run lint     # Run ESLint
+```
+
+## FAQ
+
+### Do I need a Gemini API key?
+
+Yes, but Google offers a generous free tier. Visit [Google AI Studio](https://aistudio.google.com/app/apikey) to get started.
+
+### Where is my data stored?
+
+All data is stored in your local Supabase instance. Your meeting recordings and notes never leave your computer.
+
+### How is this different from cloud services?
+
+Remembry is **self-hosted**. You install and run it on your own hardware. This gives you:
+- Complete data privacy
+- No subscription fees
+- No internet connection required
+- Full control over your data
+
+## License
+
+This project is open source under the [MIT License](LICENSE).
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.

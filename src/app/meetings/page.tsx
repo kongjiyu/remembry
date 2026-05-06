@@ -75,37 +75,15 @@ export default function MeetingsPage() {
     const fetchMeetings = async () => {
         try {
             setLoading(true);
-            const response = await fetch('/api/projects');
-            
+            const response = await fetch('/api/meetings');
+
             if (!response.ok) {
-                throw new Error('Failed to fetch projects');
+                throw new Error('Failed to fetch meetings');
             }
 
             const data = await response.json();
-            const projects: Project[] = data.projects || [];
-            
-            // Flatten all meetings from all projects
-            const allMeetings: MeetingWithProject[] = [];
-            projects.forEach(project => {
-                project.meetings.forEach(meeting => {
-                    // Skip project-metadata documents
-                    if (!meeting.displayName.startsWith('project-')) {
-                        allMeetings.push({
-                            ...meeting,
-                            projectName: project.name,  // RAG store resource name
-                            projectDisplayName: project.displayName  // User-entered project name
-                        });
-                    }
-                });
-            });
-            
-            // Sort by upload time (newest first)
-            allMeetings.sort((a, b) => {
-                const dateA = a.uploadTime ? new Date(a.uploadTime).getTime() : 0;
-                const dateB = b.uploadTime ? new Date(b.uploadTime).getTime() : 0;
-                return dateB - dateA;
-            });
-            
+            const allMeetings: MeetingWithProject[] = data.meetings || [];
+
             setMeetings(allMeetings);
         } catch (error) {
             console.error('Error fetching meetings:', error);

@@ -1,15 +1,26 @@
-import { GoogleGenAI, FileState } from "@google/genai";
+import { GoogleGenAI } from "@google/genai";
+import { createWriteStream, createReadStream } from "fs";
+import * as path from "path";
+import * as os from "os";
+import { mkdtemp, rm, readFile } from "fs/promises";
 
-const apiKey = process.env.GEMINI_API_KEY;
-
-if (!apiKey) {
-    throw new Error("GEMINI_API_KEY environment variable is not set");
+function createGeminiClient(apiKey?: string): GoogleGenAI {
+    const resolvedApiKey = apiKey || process.env.GEMINI_API_KEY || process.env.API_KEY;
+    if (!resolvedApiKey) {
+        throw new Error("Gemini API key is not set");
+    }
+    return new GoogleGenAI({ apiKey: resolvedApiKey });
 }
 
-export const genAI = new GoogleGenAI({ apiKey });
+// Model configuration:
+// - Transcription: Use lighter/faster model for high-volume transcription
+// - Analysis: Use powerful model for deep understanding
 
-// Use Gemini 3 Flash for optimal performance and reasoning
-export const TRANSCRIPTION_MODEL = "gemini-3-flash-preview";
+// Transcription model - gemini-3.1-flash-lite-preview for fast, efficient transcription
+export const TRANSCRIPTION_MODEL = "gemini-3.1-flash-lite-preview";
+
+// Analysis model - more powerful model for final synthesis
+export const ANALYSIS_MODEL = "gemini-3-flash-preview";
 
 export interface TranscriptionResult {
     text: string;
@@ -42,45 +53,54 @@ function sleep(ms: number): Promise<void> {
  */
 async function retryWithBackoff<T>(
     fn: () => Promise<T>,
-    maxRetries: number = 3,
+    maxRetries: number = 5,
     initialDelay: number = 5000
 ): Promise<T> {
     let lastError: Error | null = null;
-    
+
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
         try {
             return await fn();
         } catch (error: unknown) {
             lastError = error instanceof Error ? error : new Error(String(error));
-            
+
             // Check if it's a rate limit error (429)
             const errorMessage = lastError.message || "";
-            const isRateLimited = errorMessage.includes("429") || 
+            const isRateLimited = errorMessage.includes("429") ||
                                   errorMessage.includes("RESOURCE_EXHAUSTED") ||
                                   errorMessage.includes("quota");
-            
+
             // Check if it's a network error
             const isNetworkError = errorMessage.includes("fetch failed") ||
                                    errorMessage.includes("ECONNREFUSED") ||
                                    errorMessage.includes("ETIMEDOUT") ||
                                    errorMessage.includes("network");
 
-            // Check if it's a server error (500) or internal error
+            // Check if it's a server error (500, 502, 503, 504) or internal error
             const isServerError = errorMessage.includes("500") ||
+                                  errorMessage.includes("502") ||
+                                  errorMessage.includes("503") ||
+                                  errorMessage.includes("504") ||
+                                  errorMessage.includes("UNAVAILABLE") ||
                                   errorMessage.includes("INTERNAL") ||
                                   errorMessage.includes("Failed to convert server response to JSON");
-            
-            // Retry on network errors, rate limits, or server errors
-            if ((isRateLimited || isNetworkError || isServerError) && attempt < maxRetries) {
+
+            // Check if it's a high demand error
+            const isHighDemand = errorMessage.includes("high demand") ||
+                                 errorMessage.includes("overloaded");
+
+            // Retry on network errors, rate limits, server errors, or high demand
+            if ((isRateLimited || isNetworkError || isServerError || isHighDemand) && attempt < maxRetries) {
                 // Extract retry delay from error if available
                 const retryMatch = errorMessage.match(/retry in (\d+(?:\.\d+)?)/i);
                 const suggestedDelay = retryMatch ? parseFloat(retryMatch[1]) * 1000 : null;
-                
+
                 const delay = suggestedDelay || (initialDelay * Math.pow(2, attempt));
                 let reason = "Unknown retry reason";
                 if (isRateLimited) reason = "Rate limited";
                 else if (isNetworkError) reason = "Network error";
                 else if (isServerError) reason = "Server error";
+                else if (isHighDemand) reason = "High demand";
 
                 console.log(`${reason}. Retrying in ${Math.round(delay / 1000)}s (attempt ${attempt + 1}/${maxRetries})...`);
                 await sleep(delay);
@@ -89,20 +109,23 @@ async function retryWithBackoff<T>(
             }
         }
     }
-    
+
     throw lastError || new Error("Max retries exceeded");
 }
 
 /**
- * Transcribe audio using Gemini 2.0 Flash and File API
+ * Transcribe audio using the lighter model for speed
+ * Uses gemini-2.0-flash for fast, reliable transcription
  */
 export async function transcribeAudio(
     filePath: string,
     mimeType: string,
-    context?: string
+    context?: string,
+    apiKey?: string
 ): Promise<TranscriptionResult> {
+    const genAI = createGeminiClient(apiKey);
     console.log(`Uploading file for transcription: ${filePath}`);
-    
+
     // Upload the file to Gemini
     const uploadResult = await genAI.files.upload({
         file: filePath,
@@ -122,22 +145,22 @@ export async function transcribeAudio(
 
     // Wait for the file to be active
     let file = await genAI.files.get({ name: fileName });
-    
+
     // Polling loop with robust error handling for 500s during processing
     while (file.state === "PROCESSING") {
         console.log("File is processing...");
         await sleep(5000); // Check every 5 seconds for larger files
-        
+
         try {
             file = await genAI.files.get({ name: fileName });
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         } catch (error: any) {
-            // Ignore transient 500 errors during polling, just keep waiting
+            // Ignore transient errors during polling
             if (error.message?.includes("500") || error.message?.includes("INTERNAL") || error.message?.includes("json")) {
                 console.warn("Transient API error during polling, continuing...", error.message);
                 continue;
             }
-            throw error; // Rethrow other errors (e.g. 404, 403)
+            throw error;
         }
     }
 
@@ -151,100 +174,137 @@ export async function transcribeAudio(
         ? `\nContext provided by user: "${context}". Use this to improve accuracy of technical terms and names.`
         : "";
 
-    const prompt = `You are an expert transcription assistant. Please transcribe this audio recording with the following requirements:
+    const prompt = `You are an expert transcription assistant. Your job is to produce ACCURATE, NON-REPETITIVE transcriptions.
 
-1. **Language Preservation**: CRITICAL - Transcribe in the ORIGINAL LANGUAGE spoken. Do NOT translate. If the audio mixes multiple languages (e.g., Chinese + English code-switching), preserve BOTH languages exactly as spoken. Keep Chinese characters as Chinese, English as English.
+CRITICAL: PREVENT REPETITION
+- NEVER repeat the same content, sentence, or phrase more than once
+- If content appears similar to what you already transcribed, STOP - do not re-transcribe it
+- The transcript should progress FORWARD through the conversation, not loop back
+- If you find yourself about to repeat content that already appeared, move to the next topic
 
-2. **Speaker Identification**: Do NOT attempt to identify specific speakers by name or label (like "Speaker 1"). Treat the entire audio as a single continuous transcription or simple segments if there are clear pauses.
+SEGMENT REQUIREMENTS:
+- Split into segments of 2-5 minutes each (120-300 seconds)
+- Each segment must contain DIFFERENT content from other segments
+- Use speaker labels with voice descriptions in format: "Person A (deep male voice, slow speaker)"
+- If only one speaker, still create multiple segments covering different topics/time periods
 
-3. **Context**: ${additionalContext}
+VOICE DESCRIPTIONS (CRITICAL for consistency):
+- Voice pitch: deep, medium, high
+- Speaking pace: slow, moderate, fast
+- Distinctive traits: slight accent, hesitant, enthusiastic, monotone, etc.
+- Gender hints if clear: male, female (don't assume if unclear)
+- SAME speaker must have SAME voice description in ALL segments
 
-4. **Format**: Return the transcription in the following JSON format:
+TRANSCRIPTION RULES:
+1. CRITICAL - Transcribe in the ORIGINAL LANGUAGE. Do NOT translate. Preserve code-switching exactly.
+2. Skip excessive filler words: 啊, 哦, 嗯, um, uh, like, you know (unless they add meaning)
+3. Technical terms, product names, proper nouns must be accurate
+4. Add proper punctuation for readability
+5. Do NOT repeat any content that was already transcribed in a previous segment
+
+SEGMENT TIMING:
+- Each segment must have startTime and endTime (in seconds)
+- Segments should be sequential and cover the full audio without gaps
+- endTime of one segment should equal startTime of the next segment
+
+OUTPUT FORMAT (MUST follow exactly):
 {
-    "text": "The full transcription text in ORIGINAL language(s)",
+    "text": "Full transcription in original language(s) - NO REPETITION",
     "segments": [
         {
-            "speaker": "Speaker",
-            "text": "What was said in ORIGINAL language",
+            "speaker": "Person A (deep male voice, slow speaker)",
+            "text": "First topic or point - unique content not repeated elsewhere",
             "startTime": 0.0,
-            "endTime": 1.5
+            "endTime": 180.0
+        },
+        {
+            "speaker": "Person B (high female voice, fast)",
+            "text": "Response or new point - completely different from previous segments",
+            "startTime": 180.5,
+            "endTime": 360.0
         }
     ],
-    "speakers": [],
-    "language": "Detected primary language code (e.g., 'en', 'es', 'zh', 'zh-en' for mixed)"
+    "speakers": [
+        "Person A (deep male voice, slow speaker)",
+        "Person B (high female voice, fast)"
+    ],
+    "language": "Detected primary language code"
 }
 
-5. **Accuracy**: Transcribe as accurately as possible, including:
-   - Filler words (um, uh) only if they seem intentional
-   - Technical terms and proper nouns correctly
-   - Punctuation for readability
-   - Mixed language code-switching preserved exactly
-
-6. **Timestamps**: If you can detect timing, include startTime and endTime in seconds for each segment.
+IMPORTANT: If this audio is part of a larger chunked file, match the speaker voice descriptions from previous chunks EXACTLY. Do not describe the same speaker differently.
 
 Return ONLY the JSON object, no additional text.`;
 
-    const response = await retryWithBackoff(async () => {
-        return await genAI.models.generateContent({
-            model: TRANSCRIPTION_MODEL,
-            contents: [
-                {
-                    role: "user",
-                    parts: [
-                        {
-                            fileData: {
-                                mimeType: file.mimeType,
-                                fileUri: file.uri
-                            }
-                        },
-                        { text: prompt }
-                    ],
-                },
-            ],
-            config: {
-                temperature: 1.0, // Gemini 3 defaults to 1.0 for optimal reasoning
-            },
-        });
-    });
+    // Use lighter model for transcription (fast and reliable)
+    const model = TRANSCRIPTION_MODEL;
+    console.log(`Transcribing with model: ${model}`);
 
-    const responseText = response.text || "";
-    
-    // Parse the JSON response
     try {
-        // Extract JSON from the response (handle markdown code blocks)
-        let jsonStr = responseText;
-        const jsonMatch = responseText.match(/```(?:json)?\s*([\s\S]*?)```/);
-        if (jsonMatch) {
-            jsonStr = jsonMatch[1].trim();
+        const response = await retryWithBackoff(async () => {
+            return await genAI.models.generateContent({
+                model: model,
+                contents: [
+                    {
+                        role: "user",
+                        parts: [
+                            {
+                                fileData: {
+                                    mimeType: file.mimeType,
+                                    fileUri: file.uri
+                                }
+                            },
+                            { text: prompt }
+                        ],
+                    },
+                ],
+                config: {
+                    temperature: 1.0,
+                },
+            });
+        });
+
+        const responseText = response.text || "";
+
+        // Parse the JSON response
+        try {
+            let jsonStr = responseText;
+            const jsonMatch = responseText.match(/```(?:json)?\s*([\s\S]*?)```/);
+            if (jsonMatch) {
+                jsonStr = jsonMatch[1].trim();
+            }
+
+            const result = JSON.parse(jsonStr);
+
+            return {
+                text: result.text || "",
+                segments: result.segments || [],
+                speakers: result.speakers || [],
+                duration: 0,
+                language: result.language,
+                debug: {
+                    prompt,
+                    response: responseText
+                }
+            };
+        } catch {
+            console.error("Failed to parse transcription JSON, returning raw text");
+            return {
+                text: responseText,
+                segments: [{ speaker: "Unknown", text: responseText }],
+                speakers: ["Unknown"],
+                duration: 0,
+                language: "en",
+                debug: {
+                    prompt,
+                    response: responseText
+                }
+            };
         }
-        
-        const result = JSON.parse(jsonStr);
-        
-        return {
-            text: result.text || "",
-            segments: result.segments || [],
-            speakers: result.speakers || [],
-            duration: 0, // Will be set by caller or could be inferred
-            language: result.language,
-            debug: {
-                prompt,
-                response: responseText
-            }
-        };
-    } catch {
-        // If JSON parsing fails, return the raw text as a single segment
-        console.error("Failed to parse transcription JSON, returning raw text");
-        return {
-            text: responseText,
-            segments: [{ speaker: "Unknown", text: responseText }],
-            speakers: ["Unknown"],
-            duration: 0,
-            language: "en",
-            debug: {
-                prompt,
-                response: responseText
-            }
-        };
+    } catch (error) {
+        // Transcription failed with the lighter model
+        const err = error instanceof Error ? error : new Error(String(error));
+        console.error(`Transcription failed with model ${model}:`, err.message);
+        throw err;
     }
 }
 
@@ -277,16 +337,162 @@ export const SUPPORTED_LANGUAGES = [
 export type SupportedLanguageCode = typeof SUPPORTED_LANGUAGES[number]['code'];
 
 /**
+ * Direct audio analysis - skips transcription, directly extracts structured meeting notes
+ * Uses gemini-3.1-flash-lite-preview for fast, efficient analysis
+ */
+export async function analyzeAudioDirect(
+    filePath: string,
+    mimeType: string,
+    context?: string,
+    targetLanguage: string = 'en',
+    apiKey?: string
+): Promise<MeetingNotes> {
+    const genAI = createGeminiClient(apiKey);
+    console.log(`Uploading audio for direct analysis: ${filePath}`);
+
+    // Upload the file to Gemini
+    const uploadResult = await genAI.files.upload({
+        file: filePath,
+        config: {
+            mimeType: mimeType,
+        }
+    });
+
+    const fileUri = uploadResult.uri;
+    const fileName = uploadResult.name;
+
+    if (!fileName) {
+        throw new Error("Failed to get file name from upload result");
+    }
+
+    console.log(`File uploaded: ${fileUri} (${fileName})`);
+
+    // Wait for the file to be active
+    let file = await genAI.files.get({ name: fileName });
+
+    while (file.state === "PROCESSING") {
+        console.log("File is processing...");
+        await sleep(5000);
+
+        try {
+            file = await genAI.files.get({ name: fileName });
+        } catch (error: any) {
+            if (error.message?.includes("500") || error.message?.includes("INTERNAL") || error.message?.includes("json")) {
+                console.warn("Transient API error during polling, continuing...");
+                continue;
+            }
+            throw error;
+        }
+    }
+
+    if (file.state === "FAILED") {
+        throw new Error("File processing failed");
+    }
+
+    console.log(`File is active. Starting direct analysis...`);
+
+    const additionalContext = context
+        ? `\nContext: "${context}"`
+        : "";
+
+    const languageName = SUPPORTED_LANGUAGES.find(l => l.code === targetLanguage)?.name || 'English';
+
+    const prompt = `You are an expert meeting analyst. Analyze this audio recording and extract structured meeting information.
+
+CRITICAL OUTPUT RULES:
+- Output ALL content in ${languageName} (${targetLanguage})
+- Keep technical terms, product names, code snippets in original language
+- NEVER repeat any content - each section must be unique
+
+STRUCTURE YOUR RESPONSE AS:
+1. summary: 2-3 paragraphs summarizing the meeting
+2. keyTopics: 5-8 main topics discussed
+3. actionItems: Tasks with assignees if mentioned
+4. decisions: Key decisions made
+5. assumptions: Explicit or implicit assumptions
+6. qa: Important Q&A pairs
+
+OUTPUT FORMAT (MUST be valid JSON):
+{
+    "summary": "...",
+    "keyTopics": ["..."],
+    "actionItems": ["..."],
+    "decisions": ["..."],
+    "assumptions": ["..."],
+    "qa": [{"question": "...", "answer": "..."}]
+}
+
+Return ONLY the JSON object, no additional text.`;
+
+    try {
+        const response = await retryWithBackoff(async () => {
+            return await genAI.models.generateContent({
+                model: TRANSCRIPTION_MODEL,  // Use fast model for analysis
+                contents: [
+                    {
+                        role: "user",
+                        parts: [
+                            {
+                                fileData: {
+                                    mimeType: file.mimeType,
+                                    fileUri: file.uri
+                                }
+                            },
+                            { text: prompt }
+                        ],
+                    },
+                ],
+                config: {
+                    temperature: 1.0,
+                },
+            });
+        });
+
+        const responseText = response.text || "";
+
+        try {
+            let jsonStr = responseText;
+            const jsonMatch = responseText.match(/```(?:json)?\s*([\s\S]*?)```/);
+            if (jsonMatch) {
+                jsonStr = jsonMatch[1].trim();
+            }
+            const parsed = JSON.parse(jsonStr);
+            return {
+                ...parsed,
+                language: targetLanguage
+            };
+        } catch {
+            console.error("Failed to parse analysis JSON");
+            return {
+                summary: "Failed to generate summary from audio.",
+                keyTopics: [],
+                actionItems: [],
+                decisions: [],
+                assumptions: [],
+                qa: [],
+                language: targetLanguage
+            };
+        }
+    } catch (error) {
+        const err = error instanceof Error ? error : new Error(String(error));
+        console.error(`Direct audio analysis failed:`, err.message);
+        throw err;
+    }
+}
+
+/**
  * Extract meeting notes (summary, action items, decisions, Q&A) from transcription
  * @param transcriptionText - The transcription text to analyze
  * @param context - Additional context about the meeting
  * @param targetLanguage - Target language code for the notes output (default: 'en')
  */
 export async function extractMeetingNotes(
-    transcriptionText: string, 
+    transcriptionText: string,
     context?: string,
-    targetLanguage: string = 'en'
+    targetLanguage: string = 'en',
+    apiKey?: string
 ): Promise<MeetingNotes> {
+    const genAI = createGeminiClient(apiKey);
     const additionalContext = context 
         ? `\nAdditional Context: "${context}"` 
         : "";
@@ -328,10 +534,10 @@ Return ONLY the JSON object.`;
 
     const response = await retryWithBackoff(async () => {
         return await genAI.models.generateContent({
-            model: TRANSCRIPTION_MODEL,
+            model: ANALYSIS_MODEL,
             contents: [{ role: "user", parts: [{ text: prompt }] }],
             config: {
-                temperature: 1.0, 
+                temperature: 1.0,
             },
         });
     });

@@ -1,53 +1,40 @@
 import { NextRequest, NextResponse } from "next/server";
 import { extractMeetingNotes } from "@/lib/gemini";
-import { readFile, writeFile } from "fs/promises";
-import { existsSync } from "fs";
-import path from "path";
+import { resolveGeminiApiKeyForRequest } from "@/lib/userKey";
+import { getMeetingById, updateMeetingNotesLanguage } from "@/lib/meetingStorage";
 
 export async function POST(
     request: NextRequest,
     context: { params: Promise<{ id: string }> }
 ) {
     try {
-        const { id } = await context.params;
-        const uploadsDir = path.join(process.cwd(), "uploads", id);
-        const transcriptionPath = path.join(uploadsDir, "transcription.json");
-        const notesPath = path.join(uploadsDir, "notes.json");
-
-        if (!existsSync(transcriptionPath)) {
+        const apiKey = await resolveGeminiApiKeyForRequest(request);
+        if (!apiKey) {
             return NextResponse.json(
-                { error: "Transcription not found" },
-                { status: 404 }
-            );
-        }
-
-        // Read transcription
-        const meetingData = JSON.parse(await readFile(transcriptionPath, "utf-8"));
-        const transcriptionText = meetingData.transcription?.text;
-
-        if (!transcriptionText) {
-            return NextResponse.json(
-                { error: "No transcription text available" },
+                { error: "Gemini API key not found. Please add your API key in Settings." },
                 { status: 400 }
             );
         }
 
-        // Generate notes
-        console.log(`Generating notes for meeting ${id}...`);
-        const notes = await extractMeetingNotes(transcriptionText);
+        const { id } = await context.params;
+        const meeting = await getMeetingById(decodeURIComponent(id));
 
-        // Save notes
-        await writeFile(notesPath, JSON.stringify(notes, null, 2));
-        console.log(`Notes saved to ${notesPath}`);
+        if (!meeting) {
+            return NextResponse.json({ error: "Meeting not found" }, { status: 404 });
+        }
+
+        const transcriptionText = meeting.transcription?.text;
+        if (!transcriptionText) {
+            return NextResponse.json({ error: "No transcription text available" }, { status: 400 });
+        }
+
+        const notes = await extractMeetingNotes(transcriptionText, meeting.context || undefined, "en", apiKey);
+        await updateMeetingNotesLanguage(meeting.id, "en", notes);
 
         return NextResponse.json({ success: true, notes });
-
     } catch (error) {
         console.error("Error generating notes:", error);
-        return NextResponse.json(
-            { error: "Failed to generate notes" },
-            { status: 500 }
-        );
+        return NextResponse.json({ error: "Failed to generate notes" }, { status: 500 });
     }
 }
 
@@ -57,22 +44,20 @@ export async function GET(
 ) {
     try {
         const { id } = await context.params;
-        const notesPath = path.join(process.cwd(), "uploads", id, "notes.json");
+        const meeting = await getMeetingById(decodeURIComponent(id));
 
-        if (!existsSync(notesPath)) {
-            return NextResponse.json(
-                { error: "Notes not found" },
-                { status: 404 }
-            );
+        if (!meeting) {
+            return NextResponse.json({ error: "Notes not found" }, { status: 404 });
         }
 
-        const notes = JSON.parse(await readFile(notesPath, "utf-8"));
+        const notes = meeting.notes_by_language?.[meeting.default_language || "en"] || null;
+        if (!notes) {
+            return NextResponse.json({ error: "Notes not found" }, { status: 404 });
+        }
+
         return NextResponse.json({ notes });
     } catch (error) {
         console.error("Error fetching notes:", error);
-        return NextResponse.json(
-            { error: "Failed to fetch notes" },
-            { status: 500 }
-        );
+        return NextResponse.json({ error: "Failed to fetch notes" }, { status: 500 });
     }
 }

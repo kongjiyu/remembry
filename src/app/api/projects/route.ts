@@ -4,7 +4,7 @@ import { initialize, getProjectRagStore, listAllProjects } from '@/lib/fileSearc
 // Initialize AI on module load
 initialize();
 
-export async function GET(request: NextRequest) {
+export async function GET() {
     try {
         // Fetch all projects from RAG file search stores
         const projects = await listAllProjects();
@@ -36,21 +36,21 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        // Create a dedicated RAG store for this project (returns the RAG store resource name)
+        // Create a dedicated Supabase project namespace (returns the project resource name)
         let projectName: string;
         try {
             projectName = await getProjectRagStore(undefined, name.trim(), color);
         } catch (error) {
-            console.error('Failed to create RAG store for project:', error);
+            console.error('Failed to create project in Supabase:', error);
             return NextResponse.json(
-                { error: 'Failed to create RAG store for project' },
+                { error: 'Failed to create project in Supabase' },
                 { status: 500 }
             );
         }
 
         // Create project data
         const project = {
-            name: projectName,         // RAG store resource name (acts as primary key)
+            name: projectName,         // Supabase project resource name (acts as primary key)
             displayName: name.trim(),  // User-entered project name
             description: description?.trim() || '',
             color: color || 'bg-blue-500',
@@ -61,7 +61,7 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({
             success: true,
             project,
-            message: 'Project created successfully with dedicated RAG store.',
+            message: 'Project created successfully.',
         });
     } catch (error) {
         console.error('Error creating project:', error);

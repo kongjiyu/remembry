@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { initialize, deleteRagStore, listAllProjects } from '@/lib/fileSearch';
+import { initialize, deleteRagStore } from '@/lib/fileSearch';
 
 // Initialize AI on module load
 initialize();
@@ -19,13 +19,12 @@ export async function DELETE(
             );
         }
 
-        // The projectName IS the RAG store name (resource name)
-        // No need to call getProjectRagStore -just delete directly
+        // The projectName is the Supabase project resource name
         await deleteRagStore(projectName);
 
         return NextResponse.json({
             success: true,
-            message: 'Project and RAG store deleted successfully',
+            message: 'Project deleted successfully',
         });
     } catch (error) {
         console.error('Error deleting project:', error);

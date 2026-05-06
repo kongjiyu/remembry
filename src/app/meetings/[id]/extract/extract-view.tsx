@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Loader2, CheckCircle2, ListTodo, Gavel, HelpCircle, FileText, ArrowLeft, Lightbulb, Hash } from "lucide-react";
 import { toast } from "sonner";
 import Link from "next/link";
+import { buildUserHeaders } from "@/lib/clientUser";
 
 interface MeetingNotes {
     summary: string;
@@ -33,6 +34,7 @@ export function ExtractView({
         try {
             const res = await fetch(`/api/meetings/${meetingId}/extract`, {
                 method: "POST",
+                headers: buildUserHeaders(),
             });
             
             if (!res.ok) {

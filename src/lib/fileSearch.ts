@@ -1,469 +1,26 @@
-/**
- * @license
- * SPDX-License-Identifier: Apache-2.0
-*/
-import { GoogleGenAI, GenerateContentResponse, Type } from "@google/genai";
-import { RagStore, Document, QueryResult, CustomMetadata, GroundingChunk } from '../types.js';
+import { GoogleGenAI } from "@google/genai";
+import { SupabaseClient } from "@supabase/supabase-js";
+import { RagStore, CustomMetadata } from "../types";
+import { readFile } from "fs/promises";
+import { randomUUID } from "crypto";
+import { getSupabaseServerClient } from "@/lib/supabase";
 
-import { writeFile, unlink } from 'fs/promises';
-import path from 'path';
-import os from 'os';
-import crypto from 'crypto';
+type ProjectRow = {
+    id: string;
+    display_name: string;
+    color: string | null;
+    created_at: string;
+};
 
-let ai: GoogleGenAI;
-
-export function initialize() {
-    if (!ai) {
-        // Use GEMINI_API_KEY to match other parts of the app and .env
-        const apiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
-        if (!apiKey) {
-            throw new Error("GEMINI_API_KEY is not set in environment variables");
-        }
-        ai = new GoogleGenAI({ apiKey });
-    }
-}
-
-// Auto-initialize to ensure it's always available
-function ensureInitialized() {
-    if (!ai) {
-        initialize();
-    }
-}
-
-async function delay(ms: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-export async function createRagStore(displayName: string): Promise<string> {
-    ensureInitialized();
-    const ragStore = await ai.fileSearchStores.create({ config: { displayName } });
-    if (!ragStore.name) {
-        throw new Error("Failed to create RAG store: name is missing.");
-    }
-    return ragStore.name;
-}
-
-export async function uploadToRagStore(
-    ragStoreName: string, 
-    filePath: string,
-    mimeType: string,
-    displayName?: string,
-    customMetadata?: CustomMetadata[]
-): Promise<void> {
-    ensureInitialized();
-    
-    const uploadConfig: any = {
-        fileSearchStoreName: ragStoreName,
-        file: filePath
-    };
-    
-    // Build config object
-    const config: any = {};
-    
-    // Explicitly set the display name
-    if (displayName) {
-        config.displayName = displayName;
-    }
-    
-    if (mimeType) {
-        config.mimeType = mimeType;
-    }
-    
-    // Add custom metadata if provided
-    if (customMetadata && customMetadata.length > 0) {
-        config.customMetadata = customMetadata;
-    }
-    
-    // Only add config if it has properties
-    if (Object.keys(config).length > 0) {
-        uploadConfig.config = config;
-    }
-    
-    try {
-        console.log(`Starting upload to RAG store: ${displayName}`);
-        let op = await ai.fileSearchStores.uploadToFileSearchStore(uploadConfig);
-        console.log(`Upload operation created, waiting for completion...`);
-
-        while (!op.done) {
-            await delay(3000); 
-            op = await ai.operations.get({operation: op});
-        }
-        
-        console.log(`✓ Successfully uploaded to RAG store: ${displayName}`);
-        console.log(`Note: Document may need a few seconds to be indexed and queryable`);
-    } catch (error: any) {
-        // Provide more context in the error
-        const errorMsg = error?.message || String(error);
-        console.error(`✗ RAG store upload failed for ${displayName}:`, errorMsg);
-        throw new Error(`RAG store upload failed for ${displayName}: ${errorMsg}`);
-    }
-}
-
-/**
- * @deprecated - No longer needed with simplified project model
- * Save project metadata to RAG store as a special document
- * This allows projects to be listed even when they have no meetings yet
- */
-export async function saveProjectMetadata(
-    ragStoreName: string,
-    displayName: string,
-    projectData: any
-): Promise<void> {
-    ensureInitialized();
-    
-    let tempPath: string | null = null;
-
-    try {
-        // Create a text file with project metadata
-        const projectInfo = JSON.stringify(projectData, null, 2);
-        
-        // Write to temp file
-        const fileName = `project-metadata.txt`;
-        tempPath = path.join(os.tmpdir(), fileName);
-        await writeFile(tempPath, projectInfo);
-        
-        // Upload with special metadata to identify as project metadata
-        const customMetadata = [
-            { key: 'displayName', stringValue: displayName },
-            { key: 'documentType', stringValue: 'project-metadata' },
-        ];
-        
-        await uploadToRagStore(ragStoreName, tempPath, 'text/plain', fileName, customMetadata);
-        console.log(`Project metadata saved for ${displayName}`);
-    } catch (error) {
-        console.error(`Failed to save project metadata for ${displayName}:`, error);
-        throw error;
-    } finally {
-        if (tempPath) {
-            try {
-                await unlink(tempPath);
-            } catch (e) {
-                console.warn('Failed to delete temp file:', tempPath);
-            }
-        }
-    }
-}
-
-/**
- * Analyze meeting document and generate summary and action items
- */
-export async function analyzeMeeting(documentName: string): Promise<{ summary: string; actionItems: string[]; metadata: any } | null> {
-    ensureInitialized();
-    
-    // Decode URL-encoded document name
-    const decodedDocumentName = decodeURIComponent(documentName);
-    
-    console.log('Analyzing meeting document:', decodedDocumentName);
-    
-    try {
-        // Get document details
-        const doc = await ai.fileSearchStores.documents.get({ name: decodedDocumentName });
-        
-        if (!doc) {
-            console.error(`Document not found: ${decodedDocumentName}`);
-            return null;
-        }
-        
-        // Check if this is a project metadata document
-        const isProjectMetadata = doc.customMetadata?.some(m => m.key === 'documentType' && m.stringValue === 'project-metadata');
-        
-        if (isProjectMetadata) {
-            console.log('Cannot analyze project metadata document');
-            return null;
-        }
-        
-        // Extract the store name from document name
-        const storeNameMatch = decodedDocumentName.match(/^(fileSearchStores\/[^\/]+)/);
-        if (!storeNameMatch) {
-            throw new Error('Invalid document name format');
-        }
-        const storeName = storeNameMatch[1];
-        
-        const displayName = doc.displayName || decodedDocumentName.split('/').pop() || 'Document';
-        
-        // Generate analysis using file search
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: `Analyze the meeting transcript "${displayName}" and provide:
-
-1. A concise summary (2-3 paragraphs) covering the main topics discussed, key decisions made, and overall meeting outcome.
-
-2. A list of action items extracted from the meeting. Each action item should be clear and actionable.
-
-Format your response exactly as:
-
-SUMMARY:
-[Your summary here]
-
-ACTION ITEMS:
-- [Action item 1]
-- [Action item 2]
-- [etc.]
-
-If there are no action items, write "ACTION ITEMS:\n- No action items identified"`,
-            config: {
-                tools: [
-                    {
-                        fileSearch: {
-                            fileSearchStoreNames: [storeName]
-                        }
-                    }
-                ]
-            }
-        });
-        
-        const analysisText = response.text || "";
-        
-        // Parse the response
-        const summaryMatch = analysisText.match(/SUMMARY:\s*([\s\S]*?)(?=ACTION ITEMS:|$)/i);
-        const actionItemsMatch = analysisText.match(/ACTION ITEMS:\s*([\s\S]*?)$/i);
-        
-        const summary = summaryMatch ? summaryMatch[1].trim() : "Unable to generate summary.";
-        const actionItemsText = actionItemsMatch ? actionItemsMatch[1].trim() : "";
-        
-        // Parse action items (each line starting with - or numbered)
-        const actionItems = actionItemsText
-            .split('\n')
-            .map(line => line.trim())
-            .filter(line => line.length > 0)
-            .map(line => line.replace(/^[-•*]\s*/, '').replace(/^\d+\.?\s*/, '').trim())
-            .filter(line => line.length > 0);
-        
-        return {
-            summary,
-            actionItems: actionItems.length > 0 ? actionItems : ["No action items identified"],
-            metadata: {
-                displayName: displayName,
-                mimeType: doc.mimeType,
-                createTime: doc.createTime,
-                customMetadata: doc.customMetadata
-            }
-        };
-    } catch (error) {
-        console.error(`Failed to get document content for ${decodedDocumentName}:`, error);
-        return null;
-    }
-}
-
-/**
- * NEW FUNCTION: Retrieve relevant chunks from File Search WITHOUT generating an answer.
- * This function uses File Search ONLY for retrieval, not generation.
- * Used in multi-store architecture where generation happens separately.
- */
-export async function retrieveChunks(ragStoreName: string, query: string): Promise<GroundingChunk[]> {
-    ensureInitialized();
-    const response: GenerateContentResponse = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: `Find relevant information for: ${query}`,
-        config: {
-            tools: [
-                {
-                    fileSearch: {
-                        fileSearchStoreNames: [ragStoreName],
-                    }
-                }
-            ]
-        }
-    });
-
-    return response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
-}
-
-/**
- * NEW FUNCTION: Generate a response using the LLM WITHOUT File Search.
- * This function performs pure generation without retrieval.
- * Used for synthesis after multi-store retrieval is complete.
- */
-export async function generateResponse(prompt: string): Promise<string> {
-    ensureInitialized();
-    const response: GenerateContentResponse = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: prompt,
-        config: {
-            maxOutputTokens: 8192,
-            temperature: 0.7,
-            topP: 0.95,
-            topK: 40
-        }
-    });
-
-    return response.text || '';
-}
-
-export async function fileSearch(ragStoreName: string, query: string): Promise<QueryResult> {
-    ensureInitialized();
-    const response: GenerateContentResponse = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: query + "DO NOT ASK THE USER TO READ THE MANUAL, pinpoint the relevant sections in the response itself. If the information is not explicitly stated in the transcripts, respond with ‘Not mentioned in the uploaded files.",
-        config: {
-            tools: [
-                    {
-                        fileSearch: {
-                            fileSearchStoreNames: [ragStoreName],
-                        }
-                    }
-                ]
-        }
-    });
-
-    const groundingChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
-    return {
-        text: response.text || '',
-        groundingChunks: groundingChunks,
-    };
-}
-
-export async function generateExampleQuestions(
-    ragStoreName: string, 
-    contextType: "project" | "meeting",
-    contextId: string
-): Promise<string[]> {
-    ensureInitialized();
-    try {
-        // First, verify that documents exist in the RAG store
-        const documents = await listDocumentsInRagStore(ragStoreName);
-        console.log(`Total documents in RAG store: ${documents.length}`);
-        
-        const validDocuments = documents.filter(doc => !doc.displayName?.startsWith('.project-metadata'));
-        
-        if (validDocuments.length === 0) {
-            console.log(`No valid meeting documents found in RAG store ${ragStoreName}`);
-            console.log(`All documents: ${documents.map(d => d.displayName).join(', ') || 'none'}`);
-            console.log(`Note: If you just uploaded a document, it may take 5-10 seconds to be indexed`);
-            return [];
-        }
-        
-        console.log(`Found ${validDocuments.length} valid document(s) for example questions:`);
-        validDocuments.forEach(doc => console.log(`  - ${doc.displayName}`));
-        
-        // Build enhanced prompt based on context type
-        let promptContext = "";
-        
-        if (contextType === "project") {
-            // For projects, instruct AI to analyze all documents in this project-specific store
-            promptContext = `Analyze the uploaded meeting transcripts and documents from this project. The store contains ${validDocuments.length} document(s). Identify the main topics or subjects covered across these documents.`;
-        } else if (contextType === "meeting") {
-            // For meetings, focus on the specific meeting document
-            promptContext = `Focus on the meeting transcript: ${contextId}. Analyze this specific meeting.`;
-        }
-
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: `${promptContext} Based on the actual content in the documents, generate 3 short and practical example questions that a user might ask. Return ONLY a JSON array of question strings. For example: ["What were the main action items?", "Who is responsible for the project?", "What is the deadline?"]`,
-            config: {
-                tools: [
-                    {
-                        fileSearch: {
-                            fileSearchStoreNames: [ragStoreName]
-                        }
-                    }
-                ]
-            }
-        });
-        
-        if (!response.text) {
-            console.warn("No text response received for example questions");
-            return [];
-        }
-        
-        let jsonText = response.text.trim();
-
-        const jsonMatch = jsonText.match(/```json\n([\s\S]*?)\n```/);
-        if (jsonMatch && jsonMatch[1]) {
-            jsonText = jsonMatch[1];
-        } else {
-            const firstBracket = jsonText.indexOf('[');
-            const lastBracket = jsonText.lastIndexOf(']');
-            if (firstBracket !== -1 && lastBracket !== -1 && lastBracket > firstBracket) {
-                jsonText = jsonText.substring(firstBracket, lastBracket + 1);
-            }
-        }
-        
-        let parsedData;
-        try {
-            parsedData = JSON.parse(jsonText);
-        } catch (parseError) {
-            console.warn("AI did not return valid JSON for example questions. Response:", jsonText.substring(0, 200));
-            return [];
-        }
-        
-        if (Array.isArray(parsedData)) {
-            // Filter and return only valid string questions, limit to 3
-            return parsedData
-                .filter(q => typeof q === 'string')
-                .slice(0, 3);
-        }
-        
-        console.warn("Received unexpected format for example questions:", parsedData);
-        return [];
-    } catch (error) {
-        console.error("Failed to generate or parse example questions:", error);
-        return [];
-    }
-}
-
-export async function listDocumentsInRagStore(ragStoreName: string): Promise<Meeting[]> {
-    ensureInitialized();
-    
-    const documents: Meeting[] = [];
-    
-    try {
-        const pager = await ai.fileSearchStores.documents.list({
-            parent: ragStoreName,
-            config: {
-                pageSize: 20
-            }
-        });
-        
-        // Iterate through all documents in the RAG store
-        for await (const doc of pager) {
-            if (doc.name) {
-                documents.push({
-                    name: doc.name,
-                    displayName: doc.displayName || '',
-                    uploadTime: doc.createTime,
-                    mimeType: doc.mimeType
-                });
-            }
-        }
-        
-        return documents;
-    } catch (error) {
-        console.error(`Failed to list documents in RAG store ${ragStoreName}:`, error);
-        return []; // Return empty array if listing fails
-    }
-}
-
-export async function listAllRagStores(): Promise<RagStore[]> {
-    ensureInitialized();
-    
-    const allStores: RagStore[] = [];
-    
-    try {
-        const pager = await ai.fileSearchStores.list({
-            config: {
-                pageSize: 20
-            }
-        });
-        
-        // Iterate through all pages using the pager
-        for await (const store of pager) {
-            // Only include stores with a valid name
-            if (store.name) {
-                allStores.push({
-                    name: store.name,
-                    displayName: store.displayName,
-                    createTime: store.createTime
-                });
-            }
-        }
-        
-        return allStores;
-    } catch (error) {
-        console.error('Failed to list RAG stores:', error);
-        throw new Error(`Failed to list RAG stores: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    }
-}
+type DocumentRow = {
+    id: string;
+    project_id: string;
+    display_name: string;
+    mime_type: string | null;
+    content: string;
+    metadata: Record<string, unknown> | null;
+    created_at: string;
+};
 
 export interface Meeting {
     name: string;
@@ -473,210 +30,360 @@ export interface Meeting {
 }
 
 export interface Project {
-    name: string;          // RAG store resource name (e.g., "fileSearchStores/abc-123") - acts as primary key
-    displayName: string;   // User-entered project name for display
+    name: string;
+    displayName: string;
     color?: string;
     createdAt: string;
     meetings: Meeting[];
     meetingCount: number;
 }
 
-export async function listAllProjects(): Promise<Project[]> {
-    ensureInitialized();
-    
-    try {
-        const ragStores = await listAllRagStores();
-        
-        // Skip system stores (User_, System_, etc.)
-        const allProjects: Project[] = [];
-        
-        for (const store of ragStores) {
-            if (!store.name || !store.displayName) continue;
-            
-            // Skip system stores (User_, System_, etc.)
-            if (store.displayName.startsWith('User_') || store.displayName.startsWith('System_')) {
-                continue;
-            }
-            
-            try {
-                // Fetch all documents in this RAG store
-                const allDocs = await listDocumentsInRagStore(store.name);
-                
-                // Separate metadata document from actual meetings
-                const meetings = allDocs.filter(doc => doc.displayName !== '.project-metadata.json');
-                
-                // Try to get display name and color from metadata document
-                let displayName = store.displayName;
-                let color = 'bg-blue-500'; // default color
-                const metadataDoc = allDocs.find(doc => doc.displayName === '.project-metadata.json');
-                
-                if (metadataDoc?.name) {
-                    try {
-                        const doc = await ai.fileSearchStores.documents.get({ name: metadataDoc.name });
-                        const displayNameMetadata = doc.customMetadata?.find(m => m.key === 'displayName');
-                        const colorMetadata = doc.customMetadata?.find(m => m.key === 'color');
-                        
-                        if (displayNameMetadata?.stringValue) {
-                            displayName = displayNameMetadata.stringValue;
-                        }
-                        if (colorMetadata?.stringValue) {
-                            color = colorMetadata.stringValue;
-                        }
-                    } catch (error) {
-                        console.warn(`Failed to get project metadata:`, error);
-                    }
-                }
-                
-                allProjects.push({
-                    name: store.name,              // RAG store resource name (fileSearchStores/xyz)
-                    displayName: displayName,       // User-entered project name
-                    color: color,
-                    createdAt: store.createTime || new Date().toISOString(),
-                    meetings: meetings,
-                    meetingCount: meetings.length,
-                });
-            } catch (error) {
-                console.error(`Failed to process project store ${store.name}:`, error);
-                continue;
-            }
-        }
-        
-        // No duplicate removal needed since 'name' (RAG store resource name) is unique by design
-        return allProjects;
-    } catch (error) {
-        console.error('Failed to list projects:', error);
-        throw new Error(`Failed to list projects: ${error instanceof Error ? error.message : 'Unknown error'}`);
+let supabase: SupabaseClient | null = null;
+
+const GENERATION_MODEL = "gemini-3-flash-preview"; // Analysis/generation tasks
+const DEFAULT_PROJECT_COLOR = "bg-blue-500";
+
+function getGeminiClient(apiKey?: string): GoogleGenAI {
+    const resolvedApiKey = apiKey || process.env.GEMINI_API_KEY || process.env.API_KEY;
+    if (!resolvedApiKey) {
+        throw new Error("Gemini API key is not set");
+    }
+    return new GoogleGenAI({ apiKey: resolvedApiKey });
+}
+
+export function initialize() {
+    if (!supabase) {
+        supabase = getSupabaseServerClient();
     }
 }
 
-/**
- * Get or create a project's RAG store by name. Each project has its own dedicated RAG store.
- * This provides complete isolation between projects.
- * 
- * @param projectName - The RAG store resource name (e.g., "fileSearchStores/abc-123"). If provided, returns this name.
- * @param displayName - The user-entered project name. Required when creating a new store.
- * @param color - Optional color for the project.
- * @returns The RAG store resource name
- */
-export async function getProjectRagStore(projectName?: string, displayName?: string, color?: string): Promise<string> {
+function ensureInitialized() {
+    if (!supabase) {
+        initialize();
+    }
+}
+
+function getSupabase(): SupabaseClient {
     ensureInitialized();
-    
-    // If projectName is provided, it means the store already exists - just return it
-    if (projectName && projectName.trim() !== '') {
-        console.log(`[getProjectRagStore] Using existing RAG store: ${projectName}`);
+    return supabase as SupabaseClient;
+}
+
+function normalizeMetadata(customMetadata?: CustomMetadata[]): Record<string, unknown> {
+    const metadata: Record<string, unknown> = {};
+    if (!customMetadata) {
+        return metadata;
+    }
+
+    for (const item of customMetadata) {
+        const key = item.key?.trim();
+        if (!key) continue;
+
+        if (typeof item.stringValue === "string") {
+            metadata[key] = item.stringValue;
+            continue;
+        }
+
+        if (Array.isArray(item.stringListValue)) {
+            metadata[key] = item.stringListValue;
+            continue;
+        }
+
+        if (typeof item.numericValue === "number") {
+            metadata[key] = item.numericValue;
+        }
+    }
+
+    return metadata;
+}
+
+function metadataToCustomMetadata(metadata: Record<string, unknown> | null | undefined): CustomMetadata[] {
+    if (!metadata) return [];
+
+    return Object.entries(metadata).map(([key, value]) => {
+        if (Array.isArray(value)) {
+            return { key, stringListValue: value.map((v) => String(v)) };
+        }
+
+        if (typeof value === "number") {
+            return { key, numericValue: value };
+        }
+
+        return { key, stringValue: String(value) };
+    });
+}
+
+async function getDocumentsForProject(projectId: string): Promise<DocumentRow[]> {
+    const client = getSupabase();
+    const { data, error } = await client
+        .from("project_documents")
+        .select("id, project_id, display_name, mime_type, content, metadata, created_at")
+        .eq("project_id", projectId)
+        .order("created_at", { ascending: false });
+
+    if (error) {
+        throw new Error(`Failed to load project documents: ${error.message}`);
+    }
+
+    return (data || []) as DocumentRow[];
+}
+
+export async function createRagStore(displayName: string): Promise<string> {
+    const client = getSupabase();
+    const projectId = `project_${randomUUID()}`;
+
+    const { error } = await client.from("projects").insert({
+        id: projectId,
+        display_name: displayName,
+        color: DEFAULT_PROJECT_COLOR,
+    });
+
+    if (error) {
+        throw new Error(`Failed to create project: ${error.message}`);
+    }
+
+    return projectId;
+}
+
+export async function uploadToRagStore(
+    ragStoreName: string,
+    filePath: string,
+    mimeType: string,
+    displayName?: string,
+    customMetadata?: CustomMetadata[]
+): Promise<void> {
+    const client = getSupabase();
+    const content = await readFile(filePath, "utf-8");
+    const metadata = normalizeMetadata(customMetadata);
+
+    const documentId = `documents/${randomUUID()}`;
+    const { error } = await client.from("project_documents").insert({
+        id: documentId,
+        project_id: ragStoreName,
+        display_name: displayName || documentId,
+        mime_type: mimeType,
+        content,
+        metadata,
+    });
+
+    if (error) {
+        throw new Error(`Failed to save document to Supabase: ${error.message}`);
+    }
+}
+
+export async function saveProjectMetadata(
+    ragStoreName: string,
+    displayName: string,
+    projectData: unknown
+): Promise<void> {
+    void ragStoreName;
+    void displayName;
+    void projectData;
+    return;
+}
+
+export async function analyzeMeeting(
+    documentName: string,
+    apiKey?: string
+): Promise<{ summary: string; actionItems: string[]; metadata: unknown } | null> {
+    const client = getSupabase();
+    const decodedDocumentName = decodeURIComponent(documentName);
+
+    const { data, error } = await client
+        .from("project_documents")
+        .select("id, project_id, display_name, mime_type, content, metadata, created_at")
+        .eq("id", decodedDocumentName)
+        .maybeSingle();
+
+    if (error) {
+        throw new Error(`Failed to load document: ${error.message}`);
+    }
+
+    if (!data) {
+        return null;
+    }
+
+    const doc = data as DocumentRow;
+    const prompt = `Analyze the following meeting transcript and provide:\n\n1. A concise summary (2-3 paragraphs) covering the main topics discussed, key decisions made, and overall meeting outcome.\n\n2. A list of action items extracted from the meeting. Each action item should be clear and actionable.\n\nFormat your response exactly as:\n\nSUMMARY:\n[Your summary here]\n\nACTION ITEMS:\n- [Action item 1]\n- [Action item 2]\n- [etc.]\n\nIf there are no action items, write \"ACTION ITEMS:\\n- No action items identified\"\n\nTRANSCRIPT:\n${doc.content}`;
+
+    const response = await getGeminiClient(apiKey).models.generateContent({
+        model: GENERATION_MODEL,
+        contents: prompt,
+    });
+
+    const analysisText = response.text || "";
+    const summaryMatch = analysisText.match(/SUMMARY:\s*([\s\S]*?)(?=ACTION ITEMS:|$)/i);
+    const actionItemsMatch = analysisText.match(/ACTION ITEMS:\s*([\s\S]*?)$/i);
+
+    const summary = summaryMatch ? summaryMatch[1].trim() : "Unable to generate summary.";
+    const actionItemsText = actionItemsMatch ? actionItemsMatch[1].trim() : "";
+
+    const actionItems = actionItemsText
+        .split("\n")
+        .map((line) => line.trim())
+        .filter((line) => line.length > 0)
+        .map((line) => line.replace(/^[-•*]\s*/, "").replace(/^\d+\.?\s*/, "").trim())
+        .filter((line) => line.length > 0);
+
+    return {
+        summary,
+        actionItems: actionItems.length > 0 ? actionItems : ["No action items identified"],
+        metadata: {
+            displayName: doc.display_name,
+            mimeType: doc.mime_type,
+            createTime: doc.created_at,
+            customMetadata: metadataToCustomMetadata(doc.metadata),
+            projectId: doc.project_id,
+        },
+    };
+}
+
+export async function listAllRagStores(): Promise<RagStore[]> {
+    const client = getSupabase();
+    const { data, error } = await client
+        .from("projects")
+        .select("id, display_name, created_at")
+        .order("created_at", { ascending: false });
+
+    if (error) {
+        throw new Error(`Failed to list projects: ${error.message}`);
+    }
+
+    return ((data || []) as ProjectRow[]).map((row) => ({
+        name: row.id,
+        displayName: row.display_name,
+        createTime: row.created_at,
+    }));
+}
+
+export async function listAllProjects(): Promise<Project[]> {
+    const client = getSupabase();
+    const [{ data: projectData, error: projectError }, { data: docsData, error: docsError }] = await Promise.all([
+        client.from("projects").select("id, display_name, color, created_at").order("created_at", { ascending: false }),
+        client
+            .from("project_documents")
+            .select("id, project_id, display_name, mime_type, created_at")
+            .order("created_at", { ascending: false }),
+    ]);
+
+    if (projectError) {
+        throw new Error(`Failed to list projects: ${projectError.message}`);
+    }
+
+    if (docsError) {
+        throw new Error(`Failed to list project documents: ${docsError.message}`);
+    }
+
+    const meetingsByProject = new Map<string, Meeting[]>();
+
+    for (const doc of ((docsData || []) as Array<Pick<DocumentRow, "id" | "project_id" | "display_name" | "mime_type" | "created_at">>)) {
+        const existing = meetingsByProject.get(doc.project_id) || [];
+        existing.push({
+            name: doc.id,
+            displayName: doc.display_name,
+            uploadTime: doc.created_at,
+            mimeType: doc.mime_type || undefined,
+        });
+        meetingsByProject.set(doc.project_id, existing);
+    }
+
+    return ((projectData || []) as ProjectRow[]).map((project) => {
+        const meetings = meetingsByProject.get(project.id) || [];
+
+        return {
+            name: project.id,
+            displayName: project.display_name,
+            color: project.color || DEFAULT_PROJECT_COLOR,
+            createdAt: project.created_at,
+            meetings,
+            meetingCount: meetings.length,
+        };
+    });
+}
+
+export async function getProjectRagStore(projectName?: string, displayName?: string, color?: string): Promise<string> {
+    if (projectName && projectName.trim()) {
         return projectName.trim();
     }
-    
-    // Creating new store - displayName is required
-    if (!displayName || typeof displayName !== 'string' || displayName.trim() === '') {
-        throw new Error('displayName is required when creating a new RAG store');
+
+    if (!displayName || !displayName.trim()) {
+        throw new Error("displayName is required when creating a new project");
     }
-    
-    try {
-        // Create new RAG store with the user's displayName
-        // The API will generate a unique resource name automatically
-        console.log(`[getProjectRagStore] Creating new RAG store with displayName: ${displayName}`);
-        const ragStoreName = await createRagStore(displayName.trim());
-        console.log(`[getProjectRagStore] ✓ Created RAG store: ${ragStoreName}`);
-        
-        // Save project metadata if color is provided
-        if (color) {
-            let tempPath: string | null = null;
-            try {
-                const metadata = { displayName, color, createdAt: new Date().toISOString() };
-                const fileName = '.project-metadata.json';
-                
-                tempPath = path.join(os.tmpdir(), `project-meta-${Date.now()}.json`);
-                await writeFile(tempPath, JSON.stringify(metadata, null, 2));
-                
-                const customMetadata = [
-                    { key: 'displayName', stringValue: displayName },
-                    { key: 'isMetadata', stringValue: 'true' },
-                    { key: 'color', stringValue: color }
-                ];
-                
-                await uploadToRagStore(ragStoreName, tempPath, 'application/json', fileName, customMetadata);
-                console.log(`Project metadata saved for ${displayName}`);
-            } catch (metaError) {
-                console.warn(`Failed to save project metadata:`, metaError);
-                // Don't fail the whole operation if metadata save fails
-            } finally {
-                if (tempPath) {
-                    try {
-                        await unlink(tempPath);
-                    } catch (e) {
-                         // ignore cleanup error
-                    }
-                }
-            }
-        }
-        
-        return ragStoreName;
-    } catch (error) {
-        console.error(`Failed to create RAG store for project ${displayName}:`, error);
-        throw new Error(`Failed to create RAG store: ${error instanceof Error ? error.message : 'Unknown error'}`);
+
+    const client = getSupabase();
+    const projectId = `project_${randomUUID()}`;
+
+    const { error } = await client.from("projects").insert({
+        id: projectId,
+        display_name: displayName.trim(),
+        color: color || DEFAULT_PROJECT_COLOR,
+    });
+
+    if (error) {
+        throw new Error(`Failed to create project: ${error.message}`);
     }
+
+    return projectId;
 }
 
-/**
- * @deprecated - No longer needed with per-project RAG stores
- * Get or create a user's RAG store. Each user has only one RAG store.
- * All projects and meetings for a user are stored in this single store,
- * distinguished by custom metadata.
- */
 export async function getUserRagStore(userId: string): Promise<string> {
-    ensureInitialized();
-    
+    const client = getSupabase();
     const displayName = `User_${userId}`;
-    
-    try {
-        // Check if user already has a RAG store
-        const ragStores = await listAllRagStores();
-        const existingStore = ragStores.find(store => store.displayName === displayName);
-        
-        if (existingStore && existingStore.name) {
-            console.log(`Found existing RAG store for user ${userId}: ${existingStore.name}`);
-            return existingStore.name;
-        }
-        
-        // Create new RAG store if not exists
-        const ragStoreName = await createRagStore(displayName);
-        console.log(`RAG store created for user ${userId}: ${ragStoreName}`);
-        return ragStoreName;
-    } catch (error) {
-        console.error(`Failed to get/create RAG store for user ${userId}:`, error);
-        throw new Error(`Failed to get/create RAG store: ${error instanceof Error ? error.message : 'Unknown error'}`);
+
+    const { data: existing, error: existingError } = await client
+        .from("projects")
+        .select("id")
+        .eq("display_name", displayName)
+        .maybeSingle();
+
+    if (existingError) {
+        throw new Error(`Failed to get user project: ${existingError.message}`);
     }
+
+    if (existing?.id) {
+        return existing.id;
+    }
+
+    const projectId = `project_${randomUUID()}`;
+    const { error: insertError } = await client.from("projects").insert({
+        id: projectId,
+        display_name: displayName,
+        color: DEFAULT_PROJECT_COLOR,
+    });
+
+    if (insertError) {
+        throw new Error(`Failed to create user project: ${insertError.message}`);
+    }
+
+    return projectId;
 }
 
-/**
- * Check if any projects exist by checking for RAG stores (excluding system stores)
- */
 export async function userHasProjects(userId: string): Promise<boolean> {
-    ensureInitialized();
-    
-    try {
-        const ragStores = await listAllRagStores();
-        // Check if any stores exist that aren't system stores
-        const projectStores = ragStores.filter(store => 
-            !store.displayName?.startsWith('User_') && 
-            !store.displayName?.startsWith('System_')
-        );
-        return projectStores.length > 0;
-    } catch (error) {
-        console.error(`Failed to check if user ${userId} has projects:`, error);
+    void userId;
+    const client = getSupabase();
+    const { data, error } = await client
+        .from("projects")
+        .select("id")
+        .not("display_name", "like", "User_%")
+        .not("display_name", "like", "System_%")
+        .limit(1);
+
+    if (error) {
         return false;
     }
+
+    return (data || []).length > 0;
 }
 
 export async function deleteRagStore(ragStoreName: string): Promise<void> {
-    if (!ai) {
-        console.warn("Gemini AI not initialized, skipping RAG store deletion");
-        return;
+    const client = getSupabase();
+
+    const { error: docsError } = await client.from("project_documents").delete().eq("project_id", ragStoreName);
+    if (docsError) {
+        throw new Error(`Failed to delete project documents: ${docsError.message}`);
     }
-    // DO: Remove `(as any)` type assertion.
-    await ai.fileSearchStores.delete({
-        name: ragStoreName,
-        config: { force: true },
-    });
+
+    const { error: projectError } = await client.from("projects").delete().eq("id", ragStoreName);
+    if (projectError) {
+        throw new Error(`Failed to delete project: ${projectError.message}`);
+    }
 }

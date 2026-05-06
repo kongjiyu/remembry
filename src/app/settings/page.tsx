@@ -3,18 +3,148 @@
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Palette, Moon, Sun, Monitor } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Palette, Moon, Sun, Monitor, KeyRound, Loader2, CheckCircle2, AlertCircle, ExternalLink, Copy, Trash2, Eye, EyeOff } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useEffect, useState } from "react";
+import { buildUserHeaders, getOrCreateRemembryUserId } from "@/lib/clientUser";
+import { toast } from "sonner";
+import { Badge } from "@/components/ui/badge";
+
+interface ApiKeyStatus {
+    hasKey: boolean;
+    maskedKey: string | null;
+    keyPrefix: string | null;
+    keySuffix: string | null;
+    createdAt: string | null;
+    lastUsed: string | null;
+    usageCount: number;
+}
 
 export default function SettingsPage() {
     const { theme, setTheme } = useTheme();
     const [mounted, setMounted] = useState(false);
+    const [apiKey, setApiKey] = useState("");
+    const [apiKeyStatus, setApiKeyStatus] = useState<ApiKeyStatus | null>(null);
+    const [isSavingKey, setIsSavingKey] = useState(false);
+    const [isLoadingKeyStatus, setIsLoadingKeyStatus] = useState(false);
+    const [isDeleting, setIsDeleting] = useState(false);
+    const [showApiKey, setShowApiKey] = useState(false);
 
-    // Prevent hydration mismatch
     useEffect(() => {
         setMounted(true);
     }, []);
+
+    useEffect(() => {
+        const loadGeminiKeyStatus = async () => {
+            setIsLoadingKeyStatus(true);
+            try {
+                getOrCreateRemembryUserId();
+                const response = await fetch("/api/settings/gemini-key", {
+                    headers: buildUserHeaders(),
+                });
+
+                if (!response.ok) {
+                    throw new Error("Failed to load Gemini API key status");
+                }
+
+                const data = await response.json();
+                setApiKeyStatus(data);
+            } catch (error) {
+                console.error("Failed to load key status:", error);
+            } finally {
+                setIsLoadingKeyStatus(false);
+            }
+        };
+
+        loadGeminiKeyStatus();
+    }, []);
+
+    const handleSaveApiKey = async () => {
+        if (!apiKey.trim()) {
+            toast.error("Please enter a Gemini API key.");
+            return;
+        }
+
+        if (!apiKey.startsWith("AIza")) {
+            toast.error("Invalid Gemini API key format. Key should start with 'AIza'.");
+            return;
+        }
+
+        setIsSavingKey(true);
+        try {
+            const response = await fetch("/api/settings/gemini-key", {
+                method: "POST",
+                headers: buildUserHeaders({ "Content-Type": "application/json" }),
+                body: JSON.stringify({ apiKey: apiKey.trim() }),
+            });
+
+            if (!response.ok) {
+                const data = await response.json().catch(() => ({}));
+                throw new Error(data.error || "Failed to save Gemini API key");
+            }
+
+            const statusResponse = await fetch("/api/settings/gemini-key", {
+                headers: buildUserHeaders(),
+            });
+            const statusData = await statusResponse.json();
+            setApiKeyStatus(statusData);
+            setApiKey("");
+            toast.success("Gemini API key saved successfully.");
+        } catch (error) {
+            const message = error instanceof Error ? error.message : "Failed to save key";
+            toast.error(message);
+        } finally {
+            setIsSavingKey(false);
+        }
+    };
+
+    const handleDeleteApiKey = async () => {
+        setIsDeleting(true);
+        try {
+            const response = await fetch("/api/settings/gemini-key", {
+                method: "DELETE",
+                headers: buildUserHeaders(),
+            });
+
+            if (!response.ok) {
+                throw new Error("Failed to delete Gemini API key");
+            }
+
+            setApiKeyStatus({
+                hasKey: false,
+                maskedKey: null,
+                keyPrefix: null,
+                keySuffix: null,
+                createdAt: null,
+                lastUsed: null,
+                usageCount: 0,
+            });
+            toast.success("Gemini API key deleted.");
+        } catch (error) {
+            toast.error("Failed to delete API key.");
+        } finally {
+            setIsDeleting(false);
+        }
+    };
+
+    const copyApiKey = () => {
+        if (apiKeyStatus?.maskedKey) {
+            navigator.clipboard.writeText(apiKeyStatus.maskedKey);
+            toast.success("API key prefix copied to clipboard.");
+        }
+    };
+
+    const formatDate = (dateString: string | null) => {
+        if (!dateString) return "Never";
+        return new Date(dateString).toLocaleDateString("en-US", {
+            year: "numeric",
+            month: "short",
+            day: "numeric",
+            hour: "2-digit",
+            minute: "2-digit",
+        });
+    };
 
     if (!mounted) {
         return (
@@ -71,6 +201,169 @@ export default function SettingsPage() {
                                     <span>System</span>
                                 </Button>
                             </div>
+                        </div>
+                    </CardContent>
+                </Card>
+
+                {/* Gemini API Key Management */}
+                <Card className="border-none shadow-sm bg-card/50 backdrop-blur-xl">
+                    <CardHeader>
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                                <div className="p-2 rounded-lg bg-primary/10 text-primary">
+                                    <KeyRound className="size-5" />
+                                </div>
+                                <div>
+                                    <CardTitle>Gemini API Key</CardTitle>
+                                    <CardDescription>
+                                        Manage your Gemini API key for AI-powered features
+                                    </CardDescription>
+                                </div>
+                            </div>
+                            <Badge variant={apiKeyStatus?.hasKey ? "default" : "secondary"} className="px-3 py-1">
+                                {apiKeyStatus?.hasKey ? (
+                                    <span className="flex items-center gap-1">
+                                        <CheckCircle2 className="size-3" /> Configured
+                                    </span>
+                                ) : (
+                                    <span className="flex items-center gap-1">
+                                        <AlertCircle className="size-3" /> Not Set
+                                    </span>
+                                )}
+                            </Badge>
+                        </div>
+                    </CardHeader>
+                    <CardContent className="space-y-6">
+                        {/* API Key Status Display */}
+                        {apiKeyStatus?.hasKey && (
+                            <div className="p-4 rounded-xl bg-muted/50 border space-y-3">
+                                <div className="flex items-center justify-between">
+                                    <span className="text-sm font-medium">Current API Key</span>
+                                    <div className="flex items-center gap-2">
+                                        <Button variant="ghost" size="sm" onClick={copyApiKey} className="h-8 px-2">
+                                            <Copy className="size-3 mr-1" />
+                                            Copy
+                                        </Button>
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <code className="flex-1 text-sm bg-background px-3 py-2 rounded-lg border font-mono">
+                                        {apiKeyStatus.maskedKey || `${apiKeyStatus.keyPrefix}...${apiKeyStatus.keySuffix}`}
+                                    </code>
+                                </div>
+                                <div className="grid grid-cols-3 gap-4 pt-2 text-xs text-muted-foreground">
+                                    <div>
+                                        <span className="font-medium">Created</span>
+                                        <p>{formatDate(apiKeyStatus.createdAt)}</p>
+                                    </div>
+                                    <div>
+                                        <span className="font-medium">Last Used</span>
+                                        <p>{formatDate(apiKeyStatus.lastUsed)}</p>
+                                    </div>
+                                    <div>
+                                        <span className="font-medium">Usage Count</span>
+                                        <p>{apiKeyStatus.usageCount.toLocaleString()} requests</p>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Add New API Key */}
+                        <div className="space-y-3">
+                            <div className="space-y-2">
+                                <label htmlFor="gemini-api-key" className="text-sm font-medium">
+                                    {apiKeyStatus?.hasKey ? "Replace API Key" : "Enter your Gemini API Key"}
+                                </label>
+                                <div className="relative">
+                                    <Input
+                                        id="gemini-api-key"
+                                        type={showApiKey ? "text" : "password"}
+                                        placeholder="AIza..."
+                                        value={apiKey}
+                                        onChange={(e) => setApiKey(e.target.value)}
+                                        autoComplete="off"
+                                        className="pr-20"
+                                    />
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="absolute right-1 top-1/2 -translate-y-1/2 h-8 px-2"
+                                        onClick={() => setShowApiKey(!showApiKey)}
+                                    >
+                                        {showApiKey ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                                    </Button>
+                                </div>
+                            </div>
+
+                            <div className="flex items-center gap-2">
+                                <Button
+                                    onClick={handleSaveApiKey}
+                                    disabled={isSavingKey || !apiKey.trim()}
+                                    className="flex-1"
+                                >
+                                    {isSavingKey ? (
+                                        <>
+                                            <Loader2 className="size-4 mr-2 animate-spin" />
+                                            Saving...
+                                        </>
+                                    ) : (
+                                        <>
+                                            <CheckCircle2 className="size-4 mr-2" />
+                                            {apiKeyStatus?.hasKey ? "Update API Key" : "Save API Key"}
+                                        </>
+                                    )}
+                                </Button>
+
+                                {apiKeyStatus?.hasKey && (
+                                    <Button
+                                        variant="destructive"
+                                        onClick={handleDeleteApiKey}
+                                        disabled={isDeleting}
+                                    >
+                                        {isDeleting ? (
+                                            <Loader2 className="size-4 animate-spin" />
+                                        ) : (
+                                            <Trash2 className="size-4" />
+                                        )}
+                                    </Button>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Help Link */}
+                        <div className="pt-2 border-t">
+                            <a
+                                href="https://aistudio.google.com/app/apikey"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="flex items-center gap-2 text-sm text-muted-foreground hover:text-primary transition-colors"
+                            >
+                                <ExternalLink className="size-3" />
+                                Get your Gemini API key from Google AI Studio
+                            </a>
+                        </div>
+                    </CardContent>
+                </Card>
+
+                {/* Database Info */}
+                <Card className="border-none shadow-sm bg-card/50 backdrop-blur-xl">
+                    <CardHeader>
+                        <div className="flex items-center gap-3">
+                            <div className="p-2 rounded-lg bg-primary/10 text-primary">
+                                <KeyRound className="size-5" />
+                            </div>
+                            <div>
+                                <CardTitle>Local Storage</CardTitle>
+                                <CardDescription>
+                                    Your data is stored locally in Supabase
+                                </CardDescription>
+                            </div>
+                        </div>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                        <div className="text-sm text-muted-foreground space-y-2">
+                            <p>All your meetings, projects, and settings are stored in your local Supabase database.</p>
+                            <p>The API key is stored securely and only used for AI requests.</p>
                         </div>
                     </CardContent>
                 </Card>
