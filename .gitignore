@@ -44,3 +44,10 @@ next-env.d.ts
 
 # uploads folder
 /uploads
+
+# supabase local state
+supabase/.branches
+supabase/.temp
+
+# test files
+src/test/
