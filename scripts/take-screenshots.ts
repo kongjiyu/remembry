@@ -32,7 +32,7 @@ async function takeScreenshots() {
   const page = await context.newPage();
 
   const pages = [
-    { name: "01-home", path: "/meetings" },
+    { name: "01-home", path: "/dashboard" },
     { name: "02-meetings", path: "/meetings" },
     { name: "03-new-meeting", path: "/meetings/new" },
     { name: "04-settings", path: "/settings" },

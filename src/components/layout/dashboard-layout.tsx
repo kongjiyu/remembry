@@ -29,7 +29,7 @@ export function DashboardLayout({ children, breadcrumbs = [], title }: Dashboard
                     <Breadcrumb>
                         <BreadcrumbList>
                             <BreadcrumbItem>
-                                <BreadcrumbLink href="/meetings" className="hover:text-primary transition-colors">Home</BreadcrumbLink>
+                                <BreadcrumbLink href="/dashboard" className="hover:text-primary transition-colors">Home</BreadcrumbLink>
                             </BreadcrumbItem>
                             {breadcrumbs.map((crumb, index) => (
                                 <span key={crumb.label} className="contents">
