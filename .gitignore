@@ -54,3 +54,9 @@ src/test/
 
 # screenshots (generated locally)
 screenshots/
+
+# audio files for testing
+*.m4a
+*.mp3
+*.wav
+*.mp4

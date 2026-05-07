@@ -35,12 +35,18 @@
 
 ## Screenshots
 
+### Dashboard & Navigation
+
 | Page | Preview |
 |------|---------|
-| **Home (Meetings)** | ![Home](./public/01-home.png) |
+| **Dashboard** | ![Dashboard](./public/01-home.png) |
 | **Meetings List** | ![Meetings](./public/02-meetings.png) |
-| **New Meeting** | ![New Meeting](./public/03-new-meeting.png) |
+| **Upload Meeting** | ![New Meeting](./public/03-new-meeting.png) |
 | **Settings** | ![Settings](./public/04-settings.png) |
+
+### User Guide
+
+See [User Guide](#user-guide) below for step-by-step instructions.
 
 ---
 
@@ -91,6 +97,66 @@ Open [http://localhost:3000](http://localhost:3000) and go to **Settings** to en
 
 ---
 
+## User Guide
+
+Transform your meeting recordings into structured notes in 4 simple steps:
+
+### Step 1: Enter Your API Key
+
+Before using Remembry, you need to configure your Gemini API key:
+
+1. Go to **Settings** from the sidebar
+2. Enter your API key (get one free at [Google AI Studio](https://aistudio.google.com/app/apikey))
+3. Click **Save**
+
+![Settings](./public/04-settings.png)
+
+---
+
+### Step 2: Create a Project
+
+Organize your meetings by project:
+
+1. Click **New Project** on the Dashboard
+2. Enter a project name (e.g., "Team Meeting", "Client Call")
+3. Choose a color for easy identification
+4. Click **Create**
+
+---
+
+### Step 3: Upload Recording
+
+Upload your meeting audio or video file:
+
+1. Click **Upload** on the sidebar or Dashboard
+2. Select your project from the dropdown
+3. Enter a title for your meeting
+4. Drag & drop or click to select your audio file (MP3, WAV, M4A, WebM, MP4)
+5. Click **Upload Recording**
+
+![Upload](./public/03-new-meeting.png)
+
+---
+
+### Step 4: View Your Meeting Notes
+
+Once processed, view your AI-generated meeting notes:
+
+1. Go to **Meetings** from the sidebar
+2. Click on your meeting card
+3. Switch between **Meeting Notes** and **Transcript** tabs
+4. Use the language selector to view notes in different languages
+
+![Meeting Detail](./public/06-meeting-detail.png)
+
+The Meeting Notes tab shows:
+- **Summary** — Quick overview of the meeting
+- **Action Items** — Tasks assigned during the meeting
+- **Decisions** — Key decisions made
+- **Q&A** — Questions and answers from the meeting
+
+---
+
 ## How It Works
 
 ```
@@ -112,6 +178,7 @@ remembry/
 │   │   │   ├── meetings/       # Meeting CRUD, upload, analyze
 │   │   │   ├── projects/       # Project management
 │   │   │   └── settings/       # Settings API
+│   │   ├── dashboard/           # Dashboard page
 │   │   ├── meetings/           # Meeting pages
 │   │   ├── projects/           # Project pages
 │   │   └── settings/           # App settings
