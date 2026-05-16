@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { NotesLanguageSwitcher } from "@/components/ui/notes-language-switcher";
+import { apiFetch } from "@/lib/apiFetch";
 import { 
     FileText, 
     Hash, 
@@ -11,9 +12,9 @@ import {
     Gavel, 
     Lightbulb, 
     HelpCircle,
-    ChevronRight
+    Loader2
 } from "lucide-react";
-import Link from "next/link";
+import { toast } from "sonner";
 
 interface MeetingNotes {
     summary: string;
@@ -24,10 +25,50 @@ interface MeetingNotes {
     qa: Array<{ question: string; answer: string }>;
 }
 
+interface RawActionItem {
+    task?: string;
+}
+
+interface RawQuestionAndAnswer {
+    question: string;
+    answer: string;
+}
+
+interface RawMeetingNotes {
+    summary?: string;
+    keyTopics?: string[];
+    key_points?: string[];
+    actionItems?: string[];
+    action_items?: Array<string | RawActionItem>;
+    decisions?: string[];
+    assumptions?: string[];
+    qa?: RawQuestionAndAnswer[];
+    questions_and_answers?: RawQuestionAndAnswer[];
+}
+
 interface MeetingNotesDisplayProps {
     meetingId: string;
-    initialNotes: MeetingNotes | null;
+    initialNotes: RawMeetingNotes | null;
     initialLanguage?: string;
+}
+
+function normalizeNotes(raw: RawMeetingNotes | null | undefined): MeetingNotes | null {
+    if (!raw) {
+        return null;
+    }
+
+    const actionItems = raw.actionItems
+        ?? raw.action_items?.map((item) => typeof item === "string" ? item : item.task ?? "").filter(Boolean)
+        ?? [];
+
+    return {
+        summary: raw.summary ?? "",
+        keyTopics: raw.keyTopics ?? raw.key_points ?? [],
+        actionItems,
+        decisions: raw.decisions ?? [],
+        assumptions: raw.assumptions ?? [],
+        qa: raw.qa ?? raw.questions_and_answers ?? [],
+    };
 }
 
 export function MeetingNotesDisplay({ 
@@ -35,14 +76,15 @@ export function MeetingNotesDisplay({
     initialNotes,
     initialLanguage = 'en'
 }: MeetingNotesDisplayProps) {
-    const [notes, setNotes] = useState<MeetingNotes | null>(initialNotes);
+    const [notes, setNotes] = useState<MeetingNotes | null>(() => normalizeNotes(initialNotes));
     const [availableLanguages, setAvailableLanguages] = useState<string[]>([initialLanguage]);
+    const [isGenerating, setIsGenerating] = useState(false);
 
     useEffect(() => {
         // Fetch available languages for this meeting
         const fetchMetadata = async () => {
             try {
-                const response = await fetch(`/api/meetings/${encodeURIComponent(meetingId)}/metadata`);
+                const response = await apiFetch(`/api/meetings/${encodeURIComponent(meetingId)}/metadata`);
                 if (response.ok) {
                     const data = await response.json();
                     setAvailableLanguages(data.availableLanguages || [initialLanguage]);
@@ -54,8 +96,35 @@ export function MeetingNotesDisplay({
         fetchMetadata();
     }, [meetingId, initialLanguage]);
 
-    const handleNotesChange = (newNotes: MeetingNotes, language: string) => {
-        setNotes(newNotes);
+    const handleNotesChange = (newNotes: MeetingNotes) => {
+        setNotes(normalizeNotes(newNotes));
+    };
+
+    const handleGenerateNotes = async () => {
+        setIsGenerating(true);
+        try {
+            const response = await apiFetch(`/api/meetings/${encodeURIComponent(meetingId)}/extract`, {
+                method: "POST",
+            });
+
+            if (!response.ok) {
+                const data = await response.json().catch(() => ({}));
+                throw new Error(
+                    typeof data === "object" && data && "error" in data
+                        ? String(data.error)
+                        : "Failed to generate notes"
+                );
+            }
+
+            const data = await response.json() as { notes?: RawMeetingNotes };
+            setNotes(normalizeNotes(data.notes));
+            toast.success("Notes generated successfully.");
+        } catch (error) {
+            console.error("Failed to generate notes:", error);
+            toast.error(error instanceof Error ? error.message : "Failed to generate notes. Please try again.");
+        } finally {
+            setIsGenerating(false);
+        }
     };
 
     return (
@@ -218,11 +287,15 @@ export function MeetingNotesDisplay({
                                 The notes for this meeting haven&apos;t been generated or are currently processing.
                             </p>
                         </div>
-                        <Button asChild>
-                            <Link href={`/meetings/${meetingId}/extract`}>
-                                Generate Notes
-                                <ChevronRight className="size-4 ml-1" />
-                            </Link>
+                        <Button onClick={handleGenerateNotes} disabled={isGenerating}>
+                            {isGenerating ? (
+                                <>
+                                    <Loader2 className="size-4 mr-2 animate-spin" />
+                                    Generating...
+                                </>
+                            ) : (
+                                "Generate Notes"
+                            )}
                         </Button>
                     </CardContent>
                 </Card>

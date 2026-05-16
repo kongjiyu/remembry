@@ -93,8 +93,8 @@ async function takeGuideScreenshots() {
       console.log(`   ✅ Saved: ${OUTPUT_DIR}/06-meeting-detail.png`);
     }
 
-  } catch (error) {
-    console.error(`❌ Error: ${error.message}`);
+  } catch (error: unknown) {
+    console.error(`❌ Error: ${error instanceof Error ? error.message : String(error)}`);
   }
 
   await browser.close();

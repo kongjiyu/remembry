@@ -22,6 +22,7 @@ import {
     Loader2
 } from "lucide-react";
 import Link from "next/link";
+import { apiFetch } from "@/lib/apiFetch";
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -38,18 +39,24 @@ import {
 } from "@/components/ui/dialog";
 
 interface Meeting {
-    name: string;
-    displayName: string;
+    id: string;
+    display_name: string;
     uploadTime?: string;
     mimeType?: string;
 }
 
 interface Project {
-    name: string;          // RAG store resource name - acts as primary key  
-    displayName: string;   // User-entered project name
-    createdAt: string;
+    id: string;
+    display_name: string;
+    color: string;
+    description: string;
+    goals: string;
+    created_at: string;
+    meeting_count?: number;
+}
+
+interface ProjectDetail extends Project {
     meetings: Meeting[];
-    meetingCount: number;
 }
 
 export default function ProjectDetailsPage() {
@@ -57,7 +64,7 @@ export default function ProjectDetailsPage() {
     const router = useRouter();
     
     const [projectName, setProjectName] = useState<string>(''); // RAG store resource name
-    const [project, setProject] = useState<Project | null>(null);
+    const [project, setProject] = useState<ProjectDetail | null>(null);
     const [loading, setLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState("");
     const [showDeleteDialog, setShowDeleteDialog] = useState(false);
@@ -82,14 +89,14 @@ export default function ProjectDetailsPage() {
     const fetchProjectDetails = async () => {
         try {
             setLoading(true);
-            const response = await fetch('/api/projects');
+            const response = await apiFetch('/api/projects');
             
             if (!response.ok) {
                 throw new Error('Failed to fetch projects');
             }
 
             const data = await response.json();
-            const foundProject = data.projects?.find((p: Project) => p.name === projectName);
+            const foundProject = data.projects?.find((p: ProjectDetail) => p.id === projectName);
             
             if (foundProject) {
                 setProject(foundProject);
@@ -103,8 +110,8 @@ export default function ProjectDetailsPage() {
         }
     };
 
-    const filteredMeetings = project?.meetings.filter(meeting =>
-        meeting.displayName.toLowerCase().includes(searchQuery.toLowerCase())
+    const filteredMeetings = (project?.meetings || []).filter(meeting =>
+        meeting.display_name.toLowerCase().includes(searchQuery.toLowerCase())
     ) || [];
 
     const handleDeleteProject = async () => {
@@ -112,7 +119,7 @@ export default function ProjectDetailsPage() {
         
         try {
             setIsDeleting(true);
-            const response = await fetch(`/api/projects/${encodeURIComponent(project.name)}`, {
+            const response = await apiFetch(`/api/projects/${encodeURIComponent(project.id)}`, {
                 method: 'DELETE',
             });
 
@@ -191,9 +198,9 @@ export default function ProjectDetailsPage() {
         <DashboardLayout
             breadcrumbs={[
                 { label: "Projects", href: "/projects" },
-                { label: project.displayName }
+                { label: project.display_name }
             ]}
-            title={project.displayName}
+            title={project.display_name}
         >
             <div className="space-y-6">
                 {/* Header Actions */}
@@ -206,13 +213,13 @@ export default function ProjectDetailsPage() {
                     </Button>
                     <div className="flex gap-2">
                         <Button variant="outline" asChild>
-                            <Link href={`/ask?projectName=${encodeURIComponent(project.name)}&displayName=${encodeURIComponent(project.displayName)}`}>
+                            <Link href={`/ask?projectName=${encodeURIComponent(project.id)}&displayName=${encodeURIComponent(project.display_name)}`}>
                                 <MessageCircleQuestion className="size-4 mr-2" />
                                 Ask Questions
                             </Link>
                         </Button>
                         <Button asChild className="gap-2">
-                            <Link href={`/meetings/new?projectName=${encodeURIComponent(project.name)}&displayName=${encodeURIComponent(project.displayName)}`}>
+                            <Link href={`/meetings/new?projectName=${encodeURIComponent(project.id)}&displayName=${encodeURIComponent(project.display_name)}`}>
                                 <Upload className="size-4" />
                                 Upload Meeting
                             </Link>
@@ -243,7 +250,7 @@ export default function ProjectDetailsPage() {
                             <Mic className="size-4 text-muted-foreground" />
                         </CardHeader>
                         <CardContent>
-                            <div className="text-3xl font-bold">{project.meetingCount}</div>
+                            <div className="text-3xl font-bold">{project.meeting_count}</div>
                             <p className="text-xs text-muted-foreground mt-1">
                                 Uploaded recordings
                             </p>
@@ -258,7 +265,7 @@ export default function ProjectDetailsPage() {
                         </CardHeader>
                         <CardContent>
                             <div className="text-xl font-bold">
-                                {new Date(project.createdAt).toLocaleDateString('en-US', {
+                                {new Date(project.created_at).toLocaleDateString('en-US', {
                                     month: 'short',
                                     day: 'numeric',
                                     year: 'numeric'
@@ -278,7 +285,7 @@ export default function ProjectDetailsPage() {
                         </CardHeader>
                         <CardContent>
                             <div className="text-sm font-mono truncate">
-                                {project.name.split('/').pop()}
+                                {project.id.split('/').pop()}
                             </div>
                             <p className="text-xs text-muted-foreground mt-1">
                                 Store identifier
@@ -319,7 +326,7 @@ export default function ProjectDetailsPage() {
                                 </p>
                                 {!searchQuery && (
                                     <Button asChild>
-                                        <Link href={`/meetings/new?projectName=${encodeURIComponent(project.name)}&displayName=${encodeURIComponent(project.displayName)}`}>
+                                        <Link href={`/meetings/new?projectName=${encodeURIComponent(project.id)}&displayName=${encodeURIComponent(project.display_name)}`}>
                                             <Plus className="size-4 mr-2" />
                                             Upload Meeting
                                         </Link>
@@ -330,9 +337,9 @@ export default function ProjectDetailsPage() {
                     ) : (
                         <div className="grid gap-4">
                             {filteredMeetings.map((meeting, index) => {
-                                const encodedDocName = encodeURIComponent(meeting.name);
+                                const encodedDocName = encodeURIComponent(meeting.id);
                                 return (
-                                    <Card key={meeting.name || index} className="group hover:shadow-md transition-shadow relative">
+                                    <Card key={meeting.id || index} className="group hover:shadow-md transition-shadow relative">
                                         <CardHeader>
                                             <div className="flex items-start justify-between">
                                                 <div className="flex items-center gap-3 flex-1">
@@ -341,7 +348,7 @@ export default function ProjectDetailsPage() {
                                                     </div>
                                                     <div className="flex-1">
                                                         <CardTitle className="text-base line-clamp-1">
-                                                            {meeting.displayName || 'Untitled Meeting'}
+                                                            {meeting.display_name || 'Untitled Meeting'}
                                                         </CardTitle>
                                                         <CardDescription className="flex items-center gap-2 mt-1">
                                                             <Calendar className="size-3" />
@@ -369,12 +376,12 @@ export default function ProjectDetailsPage() {
                                                     </DropdownMenuTrigger>
                                                     <DropdownMenuContent align="end">
                                                         <DropdownMenuItem asChild>
-                                                            <Link href={`/meetings/${encodedDocName}?projectName=${encodeURIComponent(project.name)}&displayName=${encodeURIComponent(project.displayName)}`}>
+                                                            <Link href={`/meetings/${encodedDocName}?projectName=${encodeURIComponent(project.id)}&displayName=${encodeURIComponent(project.display_name)}`}>
                                                                 View Transcript
                                                             </Link>
                                                         </DropdownMenuItem>
                                                         <DropdownMenuItem asChild>
-                                                            <Link href={`/ask?type=meeting&id=${encodeURIComponent(meeting.name)}&name=${encodeURIComponent(meeting.displayName)}&projectName=${encodeURIComponent(project.name)}`}>
+                                                            <Link href={`/ask?type=meeting&id=${encodeURIComponent(meeting.id)}&name=${encodeURIComponent(meeting.display_name)}&projectName=${encodeURIComponent(project.id)}`}>
                                                                 Ask Questions
                                                             </Link>
                                                         </DropdownMenuItem>
@@ -387,7 +394,7 @@ export default function ProjectDetailsPage() {
                                             </div>
                                         </CardHeader>
                                         <Link 
-                                            href={`/meetings/${encodedDocName}?projectName=${encodeURIComponent(project.name)}&displayName=${encodeURIComponent(project.displayName)}`}
+                                            href={`/meetings/${encodedDocName}?projectName=${encodeURIComponent(project.id)}&displayName=${encodeURIComponent(project.display_name)}`}
                                             className="absolute inset-0"
                                         >
                                             <span className="sr-only">View meeting transcript</span>
@@ -406,8 +413,8 @@ export default function ProjectDetailsPage() {
                     <DialogHeader>
                         <DialogTitle>Delete Project</DialogTitle>
                         <DialogDescription>
-                            Are you sure you want to delete "{project?.displayName}"? This will permanently delete
-                            the project and all {project?.meetingCount} associated meeting(s) from the RAG store. This action cannot be undone.
+                            Are you sure you want to delete "{project?.display_name}"? This will permanently delete
+                            the project and all {project?.meeting_count} associated meeting(s) from the RAG store. This action cannot be undone.
                         </DialogDescription>
                     </DialogHeader>
                     <DialogFooter>

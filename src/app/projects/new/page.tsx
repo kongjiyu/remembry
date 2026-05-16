@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { FolderKanban, Plus } from "lucide-react";
+import { apiFetch } from "@/lib/apiFetch";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
@@ -25,7 +26,7 @@ export default function NewProjectPage() {
 
         try {
             // Call API to create project with RAG store
-            const response = await fetch('/api/projects', {
+            const response = await apiFetch('/api/projects', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

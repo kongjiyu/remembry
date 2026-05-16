@@ -1,3 +1,6 @@
+"use client";
+
+import { useState, useEffect } from "react";
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -16,8 +19,7 @@ import {
     FolderKanban,
 } from "lucide-react";
 import Link from "next/link";
-import { notFound } from "next/navigation";
-import { getMeetingById } from "@/lib/meetingStorage";
+import { apiFetch } from "@/lib/apiFetch";
 
 interface TranscriptionSegment {
     speaker: string;
@@ -35,42 +37,44 @@ interface MeetingNotes {
     qa: Array<{ question: string; answer: string }>;
 }
 
+interface RawTranscription {
+    text?: string;
+    segments?: TranscriptionSegment[];
+    speakers?: string[];
+    duration?: number;
+    language?: string;
+}
+
 interface MeetingData {
     id: string;
     title: string;
-    participants: string[];
-    createdAt: string;
-    status: string;
-    transcription: {
-        text: string;
-        segments: TranscriptionSegment[];
-        speakers: string[];
-        duration: number;
-        language?: string;
-        debug?: {
-            prompt: string;
-            response: string;
-        };
-    };
-    audioPath: string;
-    notes?: MeetingNotes;
+    createdAt?: string;
+    created_at?: string;
+    project_id: string;
+    transcription: RawTranscription;
+    notes_by_language: Record<string, MeetingNotes>;
+    default_language: string;
+    available_languages: string[];
 }
 
-async function getMeetingData(id: string): Promise<MeetingData | null> {
-    const meeting = await getMeetingById(decodeURIComponent(id));
-    if (!meeting) {
-        return null;
-    }
+interface NormalizedTranscription {
+    text: string;
+    segments: TranscriptionSegment[];
+    speakers: string[];
+    duration: number;
+    language: string;
+}
 
+function normalizeTranscription(t: RawTranscription | null | undefined): NormalizedTranscription {
+    if (!t) {
+        return { text: "", segments: [], speakers: [], duration: 0, language: "en" };
+    }
     return {
-        id: meeting.id,
-        title: meeting.title,
-        participants: [],
-        createdAt: meeting.created_at,
-        status: "completed",
-        audioPath: "",
-        transcription: meeting.transcription,
-        notes: meeting.notes_by_language?.[meeting.default_language || "en"],
+        text: t.text ?? "",
+        segments: Array.isArray(t.segments) ? t.segments : [],
+        speakers: Array.isArray(t.speakers) ? t.speakers : [],
+        duration: typeof t.duration === "number" ? t.duration : 0,
+        language: t.language ?? "en",
     };
 }
 
@@ -92,26 +96,74 @@ function formatTimestamp(seconds?: number): string {
     return `${mins}:${secs.toString().padStart(2, "0")}`;
 }
 
-export default async function MeetingDetailPage({
+export default function MeetingDetailPage({
     params,
     searchParams,
 }: {
     params: Promise<{ id: string }>;
     searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }) {
-    const { id } = await params;
-    const { projectName, displayName } = await searchParams;
+    const [meeting, setMeeting] = useState<MeetingData | null>(null);
+    const [loading, setLoading] = useState(true);
+    const [id, setId] = useState<string>("");
+    const [projectName, setProjectName] = useState<string>("");
+    const [displayName, setDisplayName] = useState<string>("");
 
-    const meeting = await getMeetingData(id);
+    useEffect(() => {
+        params.then(({ id }) => setId(id));
+        searchParams.then((sp) => {
+            const pn = sp.projectName;
+            const dn = sp.displayName;
+            setProjectName(Array.isArray(pn) ? pn[0] : (pn || ""));
+            setDisplayName(Array.isArray(dn) ? dn[0] : (dn || ""));
+        });
+    }, [params, searchParams]);
 
-    if (!meeting) {
-        notFound();
+    useEffect(() => {
+        if (!id) return;
+
+        apiFetch(`/api/meetings/${encodeURIComponent(id)}`)
+            .then((res) => {
+                if (!res.ok) throw new Error("Failed to fetch meeting");
+                return res.json();
+            })
+            .then((data) => {
+                setMeeting(data.meeting);
+                setLoading(false);
+            })
+            .catch(() => {
+                setLoading(false);
+            });
+    }, [id]);
+
+    if (loading) {
+        return (
+            <DashboardLayout breadcrumbs={[{ label: "Meetings", href: "/meetings" }, { label: "..." }]} title="Loading...">
+                <div className="flex items-center justify-center py-12">
+                    <p className="text-muted-foreground">Loading meeting...</p>
+                </div>
+            </DashboardLayout>
+        );
     }
 
-    const { transcription, notes } = meeting;
+    if (!meeting) {
+        return (
+            <DashboardLayout breadcrumbs={[{ label: "Meetings", href: "/meetings" }, { label: "Not Found" }]} title="Not Found">
+                <div className="flex flex-col items-center justify-center py-12">
+                    <p className="text-muted-foreground">Meeting not found</p>
+                    <Button variant="outline" className="mt-4" asChild>
+                        <Link href="/meetings">Back to Meetings</Link>
+                    </Button>
+                </div>
+            </DashboardLayout>
+        );
+    }
 
-    const pName = Array.isArray(projectName) ? projectName[0] : projectName;
-    const pDisplayName = Array.isArray(displayName) ? displayName[0] : displayName;
+    // Normalize transcription to handle both plain {text} and rich {text,segments,speakers,duration} shapes
+    const transcription = normalizeTranscription(meeting.transcription);
+
+    // Handle both createdAt (web) and created_at (Tauri)
+    const createdDate = meeting.createdAt ?? meeting.created_at ?? "";
 
     const calculateDuration = () => {
         if (transcription.segments.length > 0) {
@@ -135,16 +187,16 @@ export default async function MeetingDetailPage({
         <DashboardLayout
             breadcrumbs={[
                 { label: "Meetings", href: "/meetings" },
-                ...(pName && pDisplayName ? [{ label: pDisplayName, href: `/projects/${encodeURIComponent(pName)}` }] : []),
+                ...(projectName && displayName ? [{ label: displayName, href: `/projects/${encodeURIComponent(projectName)}` }] : []),
                 { label: meeting.title },
             ]}
             title={meeting.title}
         >
             <div className="space-y-6">
                 <Button variant="outline" size="sm" asChild>
-                    <Link href={pName ? `/projects/${encodeURIComponent(pName)}` : "/meetings"}>
+                    <Link href={projectName ? `/projects/${encodeURIComponent(projectName)}` : "/meetings"}>
                         <ArrowLeft className="size-4 mr-2" />
-                        {pName ? "Back to Project" : "Back to Meetings"}
+                        {projectName ? "Back to Project" : "Back to Meetings"}
                     </Link>
                 </Button>
 
@@ -157,19 +209,21 @@ export default async function MeetingDetailPage({
                             <h1 className="text-2xl font-bold line-clamp-1">{meeting.title}</h1>
                             <div className="flex items-center gap-2 text-muted-foreground text-sm">
                                 <span>
-                                    {new Date(meeting.createdAt).toLocaleDateString("en-US", {
-                                        weekday: "long",
-                                        year: "numeric",
-                                        month: "long",
-                                        day: "numeric",
-                                    })}
+                                    {createdDate
+                                        ? new Date(createdDate).toLocaleDateString("en-US", {
+                                            weekday: "long",
+                                            year: "numeric",
+                                            month: "long",
+                                            day: "numeric",
+                                        })
+                                        : "—"}{" "}
                                 </span>
-                                {pDisplayName && (
+                                {displayName && (
                                     <>
                                         <span>•</span>
                                         <span className="flex items-center gap-1">
                                             <FolderKanban className="size-3" />
-                                            {pDisplayName}
+                                            {displayName}
                                         </span>
                                     </>
                                 )}
@@ -237,7 +291,11 @@ export default async function MeetingDetailPage({
                     </TabsList>
 
                     <TabsContent value="notes" className="space-y-6">
-                        <MeetingNotesDisplay meetingId={meeting.id} initialNotes={notes || null} initialLanguage={transcription.language || "en"} />
+                        <MeetingNotesDisplay
+                            meetingId={meeting.id}
+                            initialNotes={meeting.notes_by_language?.[transcription.language] ?? null}
+                            initialLanguage={transcription.language}
+                        />
                     </TabsContent>
 
                     <TabsContent value="transcript" className="space-y-6">
@@ -258,34 +316,49 @@ export default async function MeetingDetailPage({
                             </Card>
                         )}
 
-                        <Card>
-                            <CardHeader>
-                                <CardTitle className="text-lg flex items-center gap-2">
-                                    <CheckCircle2 className="size-5 text-green-500" />
-                                    Transcript
-                                </CardTitle>
-                                <CardDescription>Full transcription with speaker identification</CardDescription>
-                            </CardHeader>
-                            <CardContent>
-                                <div className="space-y-4 max-h-150 overflow-y-auto pr-4">
-                                    {transcription.segments.map((segment, idx) => (
-                                        <div key={idx} className="flex gap-4 group">
-                                            {segment.startTime !== undefined && (
-                                                <span className="text-xs text-muted-foreground font-mono w-12 shrink-0 pt-1">
-                                                    {formatTimestamp(segment.startTime)}
-                                                </span>
-                                            )}
-                                            <div className="flex-1">
-                                                <div className="flex items-center gap-2 mb-1">
-                                                    <span className="font-medium text-sm text-primary">{segment.speaker}</span>
+                        {transcription.segments.length > 0 ? (
+                            <Card>
+                                <CardHeader>
+                                    <CardTitle className="text-lg flex items-center gap-2">
+                                        <CheckCircle2 className="size-5 text-green-500" />
+                                        Transcript
+                                    </CardTitle>
+                                    <CardDescription>Full transcription with speaker identification</CardDescription>
+                                </CardHeader>
+                                <CardContent>
+                                    <div className="space-y-4 max-h-150 overflow-y-auto pr-4">
+                                        {transcription.segments.map((segment, idx) => (
+                                            <div key={idx} className="flex gap-4 group">
+                                                {segment.startTime !== undefined && (
+                                                    <span className="text-xs text-muted-foreground font-mono w-12 shrink-0 pt-1">
+                                                        {formatTimestamp(segment.startTime)}
+                                                    </span>
+                                                )}
+                                                <div className="flex-1">
+                                                    <div className="flex items-center gap-2 mb-1">
+                                                        <span className="font-medium text-sm text-primary">{segment.speaker}</span>
+                                                    </div>
+                                                    <p className="text-sm text-foreground leading-relaxed">{segment.text}</p>
                                                 </div>
-                                                <p className="text-sm text-foreground leading-relaxed">{segment.text}</p>
                                             </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            </CardContent>
-                        </Card>
+                                        ))}
+                                    </div>
+                                </CardContent>
+                            </Card>
+                        ) : (
+                            <Card>
+                                <CardHeader>
+                                    <CardTitle className="text-lg flex items-center gap-2">
+                                        <CheckCircle2 className="size-5 text-green-500" />
+                                        Transcript
+                                    </CardTitle>
+                                    <CardDescription>Full transcription</CardDescription>
+                                </CardHeader>
+                                <CardContent>
+                                    <p className="text-sm text-foreground whitespace-pre-wrap">{transcription.text}</p>
+                                </CardContent>
+                            </Card>
+                        )}
 
                         <Card>
                             <CardHeader>

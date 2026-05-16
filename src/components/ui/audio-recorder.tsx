@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import { useAudioRecorder } from "@/hooks/useAudioRecorder";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -9,7 +10,9 @@ import { cn } from "@/lib/utils";
 
 interface AudioRecorderProps {
     onRecordingComplete?: (blob: Blob, duration: number) => void;
+    autoStart?: boolean;
     className?: string;
+    onUnsavedRecordingChange?: (hasUnsavedRecording: boolean) => void;
 }
 
 function formatDuration(seconds: number): string {
@@ -18,7 +21,7 @@ function formatDuration(seconds: number): string {
     return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
 }
 
-export function AudioRecorder({ onRecordingComplete, className }: AudioRecorderProps) {
+export function AudioRecorder({ onRecordingComplete, autoStart, className, onUnsavedRecordingChange }: AudioRecorderProps) {
     const {
         isRecording,
         isPaused,
@@ -36,6 +39,28 @@ export function AudioRecorder({ onRecordingComplete, className }: AudioRecorderP
         requestPermission,
     } = useAudioRecorder();
 
+    const autoStartRef = useRef(autoStart);
+    autoStartRef.current = autoStart;
+
+    // Track if we've already triggered auto-start to prevent double-recording
+    const autoStartedRef = useRef(false);
+
+    // Report unsaved recording state to parent
+    useEffect(() => {
+        if (!onUnsavedRecordingChange) return;
+        const isUnsaved = isRecording || isPaused || (audioUrl !== null && audioBlob !== null && !isRecording);
+        onUnsavedRecordingChange(isUnsaved);
+    }, [isRecording, isPaused, audioUrl, audioBlob, onUnsavedRecordingChange]);
+
+    // Cleanup: report false on unmount
+    useEffect(() => {
+        return () => {
+            if (onUnsavedRecordingChange) {
+                onUnsavedRecordingChange(false);
+            }
+        };
+    }, [onUnsavedRecordingChange]);
+
     const handleStopRecording = () => {
         stopRecording();
     };
@@ -43,29 +68,26 @@ export function AudioRecorder({ onRecordingComplete, className }: AudioRecorderP
     const handleConfirmRecording = () => {
         if (audioBlob && onRecordingComplete) {
             onRecordingComplete(audioBlob, duration);
+            if (onUnsavedRecordingChange) onUnsavedRecordingChange(false);
         }
     };
 
-    // Permission request state
-    if (hasPermission === null) {
-        return (
-            <Card className={cn("border-dashed", className)}>
-                <CardContent className="flex flex-col items-center justify-center py-12">
-                    <div className="flex size-20 items-center justify-center rounded-full bg-primary/10 mb-6">
-                        <Mic className="size-10 text-primary" />
-                    </div>
-                    <h3 className="text-lg font-semibold mb-2">Enable Microphone</h3>
-                    <p className="text-muted-foreground text-center max-w-sm mb-6">
-                        To record meetings directly, we need access to your microphone.
-                    </p>
-                    <Button onClick={requestPermission} size="lg" className="gap-2">
-                        <Mic className="size-4" />
-                        Allow Microphone Access
-                    </Button>
-                </CardContent>
-            </Card>
-        );
-    }
+    // Handle auto-start when autoStart is true - single guarded transition
+    useEffect(() => {
+        if (!autoStartRef.current || autoStartedRef.current) return;
+
+        if (hasPermission === null) {
+            requestPermission().then((granted) => {
+                if (granted && autoStartRef.current && !autoStartedRef.current) {
+                    autoStartedRef.current = true;
+                    startRecording();
+                }
+            });
+        } else if (hasPermission === true && !isRecording && !audioUrl && !autoStartedRef.current) {
+            autoStartedRef.current = true;
+            startRecording();
+        }
+    }, [hasPermission, requestPermission, startRecording, isRecording, audioUrl]);
 
     // Permission denied state
     if (hasPermission === false || error) {
@@ -130,9 +152,9 @@ export function AudioRecorder({ onRecordingComplete, className }: AudioRecorderP
                 <CardContent className="flex flex-col items-center justify-center py-8">
                     {/* Visualizer */}
                     <div className="w-full max-w-md h-24 mb-6 flex items-center justify-center">
-                        <AudioVisualizer 
-                            analyser={analyser} 
-                            isRecording={!isPaused} 
+                        <AudioVisualizer
+                            analyser={analyser}
+                            isRecording={!isPaused}
                             className="w-full h-full"
                         />
                     </div>
@@ -181,20 +203,41 @@ export function AudioRecorder({ onRecordingComplete, className }: AudioRecorderP
         );
     }
 
-    // Ready to record
+    // Permission request state (hasPermission is true but not recording yet)
+    if (hasPermission === true && !isRecording && !audioUrl) {
+        return (
+            <Card className={cn("border-dashed hover:border-primary/50 transition-colors", className)}>
+                <CardContent className="flex flex-col items-center justify-center py-12">
+                    <div className="flex size-20 items-center justify-center rounded-full bg-primary/10 mb-6 group-hover:bg-primary/20 transition-colors">
+                        <Mic className="size-10 text-primary" />
+                    </div>
+                    <h3 className="text-lg font-semibold mb-2">Ready to Record</h3>
+                    <p className="text-muted-foreground text-center max-w-sm mb-6">
+                        Click the button below to start recording your meeting. Make sure you&apos;re in a quiet environment for best results.
+                    </p>
+                    <Button onClick={startRecording} size="lg" className="gap-2">
+                        <Mic className="size-4" />
+                        Start Recording
+                    </Button>
+                </CardContent>
+            </Card>
+        );
+    }
+
+    // Initial loading state (hasPermission is null and no autoStart)
     return (
-        <Card className={cn("border-dashed hover:border-primary/50 transition-colors", className)}>
+        <Card className={cn("border-dashed", className)}>
             <CardContent className="flex flex-col items-center justify-center py-12">
-                <div className="flex size-20 items-center justify-center rounded-full bg-primary/10 mb-6 group-hover:bg-primary/20 transition-colors">
+                <div className="flex size-20 items-center justify-center rounded-full bg-primary/10 mb-6">
                     <Mic className="size-10 text-primary" />
                 </div>
-                <h3 className="text-lg font-semibold mb-2">Ready to Record</h3>
+                <h3 className="text-lg font-semibold mb-2">Enable Microphone</h3>
                 <p className="text-muted-foreground text-center max-w-sm mb-6">
-                    Click the button below to start recording your meeting. Make sure you&apos;re in a quiet environment for best results.
+                    To record meetings directly, we need access to your microphone.
                 </p>
-                <Button onClick={startRecording} size="lg" className="gap-2">
+                <Button onClick={requestPermission} size="lg" className="gap-2">
                     <Mic className="size-4" />
-                    Start Recording
+                    Allow Microphone Access
                 </Button>
             </CardContent>
         </Card>

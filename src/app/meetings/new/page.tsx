@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useEffect, useCallback, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -16,16 +16,27 @@ import {
     DropdownMenuItem,
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { apiFetch } from "@/lib/apiFetch";
+import { invoke } from "@tauri-apps/api/core";
 import Link from "next/link";
 import { toast } from "sonner";
-import { buildUserHeaders } from "@/lib/clientUser";
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from "@/components/ui/dialog";
 
 interface Project {
-    name: string;          // RAG store resource name - acts as primary key
-    displayName: string;   // User-entered project name
-    createdAt: string;
-    meetings: any[];
-    meetingCount: number;
+    id: string;
+    display_name: string;
+    color: string;
+    description: string;
+    goals: string;
+    created_at: string;
+    meeting_count?: number;
 }
 
 type InputMode = "upload" | "record";
@@ -55,6 +66,21 @@ function formatDuration(seconds: number): string {
     return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
 }
 
+// Child component that uses useSearchParams - must be wrapped in Suspense
+function ModeParamHandler({ onModeChange, onQuickRecordEntry }: { onModeChange: (mode: InputMode) => void; onQuickRecordEntry: () => void }) {
+    const searchParams = useSearchParams();
+
+    useEffect(() => {
+        const mode = searchParams.get("mode");
+        if (mode === "record") {
+            onModeChange("record");
+            onQuickRecordEntry();
+        }
+    }, [searchParams, onModeChange, onQuickRecordEntry]);
+
+    return null;
+}
+
 export default function NewMeetingPage() {
     const router = useRouter();
     const [inputMode, setInputMode] = useState<InputMode>("upload");
@@ -67,17 +93,44 @@ export default function NewMeetingPage() {
     // Form state
     const [title, setTitle] = useState("");
     const [notes, setNotes] = useState("");
-    
+
     // Project selection
     const [projects, setProjects] = useState<Project[]>([]);
     const [selectedProject, setSelectedProject] = useState<Project | null>(null);
     const [loadingProjects, setLoadingProjects] = useState(true);
     const [shouldAutoSubmit, setShouldAutoSubmit] = useState(false);
+    // Track if this was triggered by quick-record URL (only auto-start from URL, not tab click)
+    const [isQuickRecordEntry, setIsQuickRecordEntry] = useState(false);
+    // Confirmation dialog state for unsaved recording
+    const [showDiscardDialog, setShowDiscardDialog] = useState(false);
+    const [pendingMode, setPendingMode] = useState<InputMode | null>(null);
+    const [hasUnsavedRecording, setHasUnsavedRecording] = useState(false);
+
+    // Stabilized callbacks for ModeParamHandler to prevent re-forcing record mode
+    const handleModeChange = useCallback((mode: InputMode) => {
+        setInputMode(mode);
+    }, []);
+    const handleQuickRecordEntry = useCallback(() => {
+        setIsQuickRecordEntry(true);
+    }, []);
+
+    // Guarded mode change: shows dialog if switching from record→upload with unsaved audio
+    const requestModeChange = useCallback((newMode: InputMode) => {
+        if (newMode === "upload" && inputMode === "record" && hasUnsavedRecording) {
+            setPendingMode("upload");
+            setShowDiscardDialog(true);
+            return;
+        }
+        if (newMode === "record") {
+            setIsQuickRecordEntry(false); // clear auto-start flag on manual switch
+        }
+        setInputMode(newMode);
+    }, [inputMode, hasUnsavedRecording]);
 
     useEffect(() => {
         const fetchProjects = async () => {
             try {
-                const response = await fetch('/api/projects');
+                const response = await apiFetch('/api/projects');
                 if (response.ok) {
                     const data = await response.json();
                     setProjects(data.projects || []);
@@ -182,6 +235,7 @@ export default function NewMeetingPage() {
             URL.revokeObjectURL(uploadedFile.url);
         }
         setUploadedFile(null);
+        setShouldAutoSubmit(false);
     };
 
     const handleSubmit = useCallback(async () => {
@@ -194,44 +248,92 @@ export default function NewMeetingPage() {
         setProcessingStatus("Preparing file...");
 
         try {
-            // Create FormData for file upload
-            const formData = new FormData();
-            formData.append('file', uploadedFile.file);
-            formData.append('projectName', selectedProject.name); // RAG store resource name
-            formData.append('displayName', selectedProject.displayName); // User-entered project name
-            formData.append('title', title || uploadedFile.name);
-            formData.append('fileType', uploadedFile.fileType); // 'audio' or 'text'
-            // Removed participants as requested in the new feature
-            formData.append('notes', notes);
-            formData.append('notesLanguages', JSON.stringify(["en"]));
-            if (uploadedFile.duration) {
-                formData.append('duration', uploadedFile.duration.toString());
+            // Check if Gemini API key is configured first
+            const keyStatus = await invoke<{ hasKey: boolean }>('get_gemini_key_status');
+            if (!keyStatus.hasKey) {
+                toast.error('Gemini API key not configured. Please add your API key in Settings.');
+                return;
             }
 
-            const response = await fetch('/api/meetings/upload', {
-                method: 'POST',
-                headers: buildUserHeaders(),
-                body: formData,
+            const file = uploadedFile.file;
+            const CHUNK_SIZE = 5 * 1024 * 1024; // 5MB
+            const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+            const fileName = title || uploadedFile.name;
+            const mimeType = file.type || (uploadedFile.fileType === 'text' ? 'text/plain' : 'audio/mpeg');
+
+            setProcessingStatus("Starting upload...");
+
+            // Start upload session using invoke directly
+            const startResult = await invoke<{ success: boolean; upload_id: string }>('start_upload', {
+                fileName,
+                totalChunks,
             });
 
-            if (!response.ok) {
-                const error = await response.json();
-                throw new Error(error.error || 'Failed to upload meeting');
+            if (!startResult.success) {
+                throw new Error('Failed to start upload');
             }
 
-            const data = await response.json();
-            console.log('Meeting uploaded successfully:', data);
-            
+            const uploadId = startResult.upload_id;
+
+            setProcessingStatus(`Uploading ${totalChunks} chunk(s)...`);
+
+            // Upload chunks
+            const arrayBuffer = await file.arrayBuffer();
+            for (let i = 0; i < totalChunks; i++) {
+                const start = i * CHUNK_SIZE;
+                const end = Math.min(start + CHUNK_SIZE, file.size);
+                const chunk = arrayBuffer.slice(start, end);
+                const base64Chunk = btoa(
+                    new Uint8Array(chunk).reduce((data, byte) => data + String.fromCharCode(byte), '')
+                );
+
+                const chunkResult = await invoke<{ success: boolean }>('append_upload_chunk', {
+                    uploadId,
+                    chunkIndex: i,
+                    chunkData: base64Chunk,
+                });
+
+                if (!chunkResult.success) {
+                    await invoke('cancel_upload', { uploadId });
+                    throw new Error('Failed to upload chunk');
+                }
+
+                setProcessingStatus(`Uploading chunk ${i + 1} of ${totalChunks}...`);
+            }
+
+            setProcessingStatus("Processing meeting...");
+
+            // Process the upload using invoke directly
+            const processResult = await invoke<{
+                success: boolean;
+                meeting_id: string;
+                meeting: unknown;
+                message: string;
+            }>('process_meeting_upload', {
+                uploadId,
+                params: {
+                    project_id: selectedProject.id,
+                    title: fileName,
+                    context: notes || null,
+                    file_type: uploadedFile.fileType,
+                    notes_languages: ["en"],
+                },
+            });
+
+            if (!processResult.success) {
+                throw new Error(processResult.message || 'Failed to process meeting');
+            }
+
+            console.log('Meeting uploaded successfully:', processResult);
+
             toast.success("Meeting uploaded successfully!");
 
-            // Navigate to meeting detail page if ID exists, otherwise meetings list
-            if (data.meetingId) {
-                // Pass project info as query params for breadcrumb navigation
+            if (processResult.meeting_id) {
                 const queryParams = new URLSearchParams({
-                    projectName: selectedProject.name,
-                    displayName: selectedProject.displayName
+                    projectName: selectedProject.id,
+                    display_name: selectedProject.display_name
                 });
-                router.push(`/meetings/${data.meetingId}?${queryParams.toString()}`);
+                router.push(`/meetings/${processResult.meeting_id}?${queryParams.toString()}`);
             } else {
                 router.push('/meetings');
             }
@@ -251,6 +353,9 @@ export default function NewMeetingPage() {
         }
     }, [shouldAutoSubmit, uploadedFile, selectedProject, handleSubmit]);
 
+    // Only auto-start when coming from quick-record URL, not from manual tab switch
+    const shouldAutoStart = inputMode === "record" && isQuickRecordEntry;
+
     return (
         <DashboardLayout
             breadcrumbs={[
@@ -259,13 +364,16 @@ export default function NewMeetingPage() {
             ]}
             title="New Meeting"
         >
+            <Suspense fallback={<div className="p-8 text-center">Loading...</div>}>
+                <ModeParamHandler onModeChange={handleModeChange} onQuickRecordEntry={handleQuickRecordEntry} />
+            </Suspense>
             <div className="max-w-3xl mx-auto space-y-6">
                 {/* Mode Toggle */}
                 <div className="flex gap-2 p-1 bg-muted rounded-lg w-fit">
                     <Button
                         variant={inputMode === "upload" ? "default" : "ghost"}
                         size="sm"
-                        onClick={() => setInputMode("upload")}
+                        onClick={() => requestModeChange("upload")}
                         className="gap-2"
                     >
                         <Upload className="size-4" />
@@ -274,7 +382,7 @@ export default function NewMeetingPage() {
                     <Button
                         variant={inputMode === "record" ? "default" : "ghost"}
                         size="sm"
-                        onClick={() => setInputMode("record")}
+                        onClick={() => requestModeChange("record")}
                         className="gap-2"
                     >
                         <Mic className="size-4" />
@@ -387,7 +495,7 @@ export default function NewMeetingPage() {
                             </div>
                         ) : (
                             /* Audio Recorder */
-                            <AudioRecorder onRecordingComplete={handleRecordingComplete} />
+                            <AudioRecorder onRecordingComplete={handleRecordingComplete} autoStart={shouldAutoStart} onUnsavedRecordingChange={setHasUnsavedRecording} />
                         )}
                     </CardContent>
                 </Card>
@@ -413,7 +521,7 @@ export default function NewMeetingPage() {
                                             {selectedProject ? (
                                                 <span className="flex items-center gap-2 truncate">
                                                     <FolderKanban className="size-4 shrink-0" />
-                                                        <span className="truncate">{selectedProject.displayName}</span>
+                                                        <span className="truncate">{selectedProject.display_name}</span>
                                                 </span>
                                             ) : (
                                                 <span className="text-muted-foreground">Select a project</span>
@@ -428,14 +536,14 @@ export default function NewMeetingPage() {
                                         ) : (
                                             projects.map((project) => (
                                                 <DropdownMenuItem
-                                                    key={project.name}
+                                                    key={project.id}
                                                     onClick={() => setSelectedProject(project)}
                                                     className="flex items-center gap-2"
                                                 >
                                                     <FolderKanban className="size-4" />
-                                                    <span>{project.displayName}</span>
+                                                    <span>{project.display_name}</span>
                                                     <span className="ml-auto text-xs text-muted-foreground">
-                                                        {project.meetingCount} meetings
+                                                        {project.meeting_count || 0} meetings
                                                     </span>
                                                 </DropdownMenuItem>
                                             ))
@@ -503,6 +611,37 @@ export default function NewMeetingPage() {
                         )}
                     </Button>
                 </div>
+
+                {/* Discard Recording Confirmation Dialog */}
+                <Dialog open={showDiscardDialog} onOpenChange={setShowDiscardDialog}>
+                    <DialogContent>
+                        <DialogHeader>
+                            <DialogTitle>Cancel recording?</DialogTitle>
+                            <DialogDescription>
+                                Going to Upload File will stop and discard your current recording.
+                            </DialogDescription>
+                        </DialogHeader>
+                        <DialogFooter>
+                            <Button
+                                variant="outline"
+                                onClick={() => setShowDiscardDialog(false)}
+                            >
+                                Keep Recording
+                            </Button>
+                            <Button
+                                variant="destructive"
+                                onClick={() => {
+                                    setShowDiscardDialog(false);
+                                    setHasUnsavedRecording(false);
+                                    setIsQuickRecordEntry(false);
+                                    if (pendingMode) setInputMode(pendingMode);
+                                }}
+                            >
+                                Cancel Recording
+                            </Button>
+                        </DialogFooter>
+                    </DialogContent>
+                </Dialog>
             </div>
         </DashboardLayout>
     );

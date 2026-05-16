@@ -6,6 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { apiFetch } from "@/lib/apiFetch";
 import {
     Mic, FileText, Clock, CheckCircle2, Upload,
     TrendingUp, FolderKanban, Plus, MessageCircleQuestion,
@@ -14,11 +15,26 @@ import {
 import Link from "next/link";
 
 interface Project {
-    name: string;
-    displayName: string;
-    color?: string;
-    meetings: any[];
-    meetingCount: number;
+    id: string;
+    display_name: string;
+    color: string;
+    description: string;
+    goals: string;
+    created_at: string;
+    meeting_count?: number;
+    meetings?: Meeting[];
+}
+
+interface Meeting {
+    id: string;
+    display_name: string;
+    title: string;
+    project_id: string;
+    created_at: string;
+    transcription?: { text: string; language?: string };
+    notes_by_language?: Record<string, unknown>;
+    default_language?: string;
+    available_languages?: string[];
 }
 
 export default function DashboardPage() {
@@ -31,7 +47,7 @@ export default function DashboardPage() {
 
     const fetchProjects = async () => {
         try {
-            const response = await fetch('/api/projects');
+            const response = await apiFetch('/api/projects');
             if (response.ok) {
                 const data = await response.json();
                 setProjects(data.projects || []);
@@ -43,20 +59,20 @@ export default function DashboardPage() {
         }
     };
 
-    const totalMeetings = projects.reduce((acc, p) => acc + p.meetingCount, 0);
+    const totalMeetings = projects.reduce((acc, p) => acc + (p.meeting_count || 0), 0);
 
     const recentMeetingsList = projects
         .flatMap(project =>
             (project.meetings || []).map((meeting: any) => ({
                 ...meeting,
-                projectName: project.name,
-                projectDisplayName: project.displayName
+                projectId: project.id,
+                projectDisplayName: project.display_name
             }))
         )
-        .filter((meeting: any) => !meeting.displayName?.startsWith('project-'))
+        .filter((meeting: any) => !meeting.display_name?.startsWith('project-'))
         .sort((a: any, b: any) => {
-            const timeA = new Date(a.uploadTime || 0).getTime();
-            const timeB = new Date(b.uploadTime || 0).getTime();
+            const timeA = new Date(a.created_at || 0).getTime();
+            const timeB = new Date(b.created_at || 0).getTime();
             return timeB - timeA;
         })
         .slice(0, 5);
@@ -81,7 +97,7 @@ export default function DashboardPage() {
                                 You have <span className="font-medium text-foreground">{totalMeetings} meetings</span> processed and ready for search.
                             </CardDescription>
                         </CardHeader>
-                        <CardContent className="relative z-10">
+                        <CardContent className="relative z-10 space-y-4">
                             <div className="relative max-w-xl">
                                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground size-5" />
                                 <Input
@@ -94,6 +110,21 @@ export default function DashboardPage() {
                                     </Button>
                                 </div>
                             </div>
+                            <div className="flex items-center gap-4 pt-2">
+                                <Button
+                                    size="lg"
+                                    className="gap-3 h-12 px-6 shadow-lg shadow-primary/25 rounded-xl font-medium"
+                                    asChild
+                                >
+                                    <Link href="/meetings/new?mode=record">
+                                        <div className="flex items-center justify-center size-8 rounded-full bg-white/20">
+                                            <Mic className="size-5" />
+                                        </div>
+                                        Quick Record
+                                    </Link>
+                                </Button>
+                                <span className="text-sm text-muted-foreground">Start capturing instantly</span>
+                            </div>
                         </CardContent>
                     </Card>
 
@@ -105,7 +136,7 @@ export default function DashboardPage() {
                              ))
                         ) : recentProjectsList.length > 0 ? (
                             recentProjectsList.map((project) => (
-                                <Link key={project.name} href={`/projects/${encodeURIComponent(project.name)}`}>
+                                <Link key={project.id} href={`/projects/${encodeURIComponent(project.id)}`}>
                                     <Card className="h-full hover:bg-muted/50 transition-all duration-300 hover:scale-[1.02] border border-border/50 shadow-sm bg-card/50 backdrop-blur-sm cursor-pointer group">
                                         <CardContent className="p-5 flex flex-col justify-between h-full">
                                             <div className="flex justify-between items-start">
@@ -113,11 +144,11 @@ export default function DashboardPage() {
                                                     <FolderKanban className="size-5" />
                                                 </div>
                                                 <Badge variant="secondary" className="bg-background/80 backdrop-blur-md">
-                                                    {project.meetingCount}
+                                                    {project.meeting_count || 0}
                                                 </Badge>
                                             </div>
                                             <div>
-                                                <h3 className="font-medium break-words mt-3 group-hover:text-primary transition-colors">{project.displayName}</h3>
+                                                <h3 className="font-medium break-words mt-3 group-hover:text-primary transition-colors">{project.display_name}</h3>
                                                 <p className="text-xs text-muted-foreground">Updated recently</p>
                                             </div>
                                         </CardContent>
@@ -229,8 +260,8 @@ export default function DashboardPage() {
                                 ) : (
                                     recentMeetingsList.map((meeting: any) => (
                                         <Link
-                                            key={meeting.name}
-                                            href={`/meetings/${encodeURIComponent(meeting.name)}?projectName=${encodeURIComponent(meeting.projectName)}&displayName=${encodeURIComponent(meeting.projectDisplayName || '')}`}
+                                            key={meeting.id}
+                                            href={`/meetings/${encodeURIComponent(meeting.id)}?projectName=${encodeURIComponent(meeting.projectId)}&displayName=${encodeURIComponent(meeting.projectDisplayName || '')}`}
                                             className="group flex items-center justify-between p-4 rounded-xl hover:bg-muted/50 transition-all duration-200 border border-transparent hover:border-border/50 min-w-0"
                                         >
                                             <div className="flex items-center gap-4 min-w-0 flex-1">
@@ -239,12 +270,12 @@ export default function DashboardPage() {
                                                 </div>
                                                 <div className="flex-1 min-w-0">
                                                     <h4 className="font-medium group-hover:text-primary transition-colors break-words">
-                                                        {meeting.displayName || meeting.name}
+                                                        {meeting.display_name || meeting.title}
                                                     </h4>
                                                     <div className="flex items-center gap-2 text-xs text-muted-foreground">
                                                         <span className="flex items-center gap-1 flex-shrink-0">
                                                             <Calendar className="size-3" />
-                                                            {meeting.uploadTime ? new Date(meeting.uploadTime).toLocaleDateString() : 'Unknown'}
+                                                            {meeting.created_at ? new Date(meeting.created_at).toLocaleDateString() : 'Unknown'}
                                                         </span>
                                                         <span className="flex-shrink-0">•</span>
                                                         <span className="break-words min-w-0">{meeting.projectDisplayName}</span>

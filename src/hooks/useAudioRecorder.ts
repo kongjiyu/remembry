@@ -124,6 +124,12 @@ export function useAudioRecorder(): AudioRecorderState & AudioRecorderActions {
             };
 
             mediaRecorder.onstop = () => {
+                // Stop timer first
+                if (timerRef.current) {
+                    clearInterval(timerRef.current);
+                    timerRef.current = null;
+                }
+
                 const blob = new Blob(chunksRef.current, { type: mimeType });
                 setAudioBlob(blob);
 
@@ -135,9 +141,12 @@ export function useAudioRecorder(): AudioRecorderState & AudioRecorderActions {
                 const url = URL.createObjectURL(blob);
                 setAudioUrl(url);
 
+                setIsRecording(false);
+                setIsPaused(false);
+
                 // Stop all tracks
                 stream.getTracks().forEach(track => track.stop());
-                
+
                 // Close Audio Context
                 if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
                     audioContextRef.current.close();

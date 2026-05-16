@@ -8,7 +8,12 @@
     "start": "next start",
     "lint": "eslint",
     "test": "vitest",
-    "test:run": "vitest run"
+    "test:run": "vitest run",
+    "tauri": "tauri",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "tauri build",
+    "build:tauri": "TAURI_STATIC_EXPORT=1 next build",
+    "test:tauri-security": "node scripts/test-tauri-security.js"
   },
   "dependencies": {
     "@google/genai": "^1.38.0",
@@ -20,6 +25,7 @@
     "@radix-ui/react-tabs": "^1.1.13",
     "@radix-ui/react-tooltip": "^1.2.8",
     "@supabase/supabase-js": "^2.98.0",
+    "@tauri-apps/api": "^2.11.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "lucide-react": "^0.562.0",
@@ -34,6 +40,7 @@
   "devDependencies": {
     "@playwright/test": "^1.59.1",
     "@tailwindcss/postcss": "^4",
+    "@tauri-apps/cli": "^2.11.1",
     "@testing-library/dom": "^10.4.1",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",

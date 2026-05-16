@@ -13,6 +13,7 @@ import { Languages, Loader2, Check, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { buildUserHeaders } from "@/lib/clientUser";
+import { apiFetch } from "@/lib/apiFetch";
 
 const SUPPORTED_LANGUAGES = [
     { code: 'en', name: 'English' },
@@ -61,7 +62,7 @@ export function NotesLanguageSwitcher({
     useEffect(() => {
         const fetchMetadata = async () => {
             try {
-                const response = await fetch(`/api/meetings/${encodeURIComponent(meetingId)}/metadata`);
+                const response = await apiFetch(`/api/meetings/${encodeURIComponent(meetingId)}/metadata`);
                 if (response.ok) {
                     const data = await response.json();
                     if (data.availableLanguages && data.availableLanguages.length > 0) {
@@ -88,7 +89,7 @@ export function NotesLanguageSwitcher({
         setIsLoading(true);
         try {
             // Get cached notes for this language
-            const getResponse = await fetch(`/api/meetings/${encodeURIComponent(meetingId)}/regenerate-notes?language=${langCode}`, {
+            const getResponse = await apiFetch(`/api/meetings/${encodeURIComponent(meetingId)}/regenerate-notes?language=${langCode}`, {
                 headers: buildUserHeaders(),
             });
             const getData = await getResponse.json();
@@ -113,7 +114,7 @@ export function NotesLanguageSwitcher({
         try {
             toast.info(`Generating notes in ${SUPPORTED_LANGUAGES.find(l => l.code === langCode)?.name}...`);
             
-            const postResponse = await fetch(`/api/meetings/${encodeURIComponent(meetingId)}/regenerate-notes`, {
+            const postResponse = await apiFetch(`/api/meetings/${encodeURIComponent(meetingId)}/regenerate-notes`, {
                 method: 'POST',
                 headers: buildUserHeaders({ 'Content-Type': 'application/json' }),
                 body: JSON.stringify({ language: langCode })

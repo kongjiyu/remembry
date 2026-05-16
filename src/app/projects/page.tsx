@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { FolderKanban, Plus, Search, MoreVertical, Mic, CheckCircle2, Trash2, Loader2 } from "lucide-react";
 import Link from "next/link";
+import { apiFetch } from "@/lib/apiFetch";
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -31,12 +32,13 @@ interface Meeting {
 }
 
 interface Project {
-    name: string;          // RAG store resource name - acts as primary key
-    displayName: string;   // User-entered project name
-    color?: string;
-    createdAt: string;
-    meetings: Meeting[];
-    meetingCount: number;
+    id: string;
+    display_name: string;
+    color: string;
+    description: string;
+    goals: string;
+    created_at: string;
+    meeting_count?: number;
 }
 
 function getStatusBadge(status: string) {
@@ -66,7 +68,7 @@ export default function ProjectsPage() {
     const fetchProjects = async () => {
         try {
             setLoading(true);
-            const response = await fetch('/api/projects');
+            const response = await apiFetch('/api/projects');
             
             if (!response.ok) {
                 throw new Error('Failed to fetch projects');
@@ -87,7 +89,7 @@ export default function ProjectsPage() {
         try {
             setIsDeleting(true);
             // Use project.name (RAG store resource name) as the identifier
-            const response = await fetch(`/api/projects/${encodeURIComponent(projectToDelete.name)}`, {
+            const response = await apiFetch(`/api/projects/${encodeURIComponent(projectToDelete.id)}`, {
                 method: 'DELETE',
             });
 
@@ -108,7 +110,7 @@ export default function ProjectsPage() {
     };
 
     const filteredProjects = projects.filter(project =>
-        project.displayName.toLowerCase().includes(searchQuery.toLowerCase())
+        project.display_name.toLowerCase().includes(searchQuery.toLowerCase())
     );
 
     return (
@@ -164,7 +166,7 @@ export default function ProjectsPage() {
                         <CardContent>
                             <div className="text-3xl font-bold">
                                 {projects.filter(p => {
-                                    const projectDate = new Date(p.createdAt);
+                                    const projectDate = new Date(p.created_at);
                                     const now = new Date();
                                     return projectDate.getMonth() === now.getMonth() && 
                                            projectDate.getFullYear() === now.getFullYear();
@@ -184,7 +186,7 @@ export default function ProjectsPage() {
                         </CardHeader>
                         <CardContent>
                             <div className="text-3xl font-bold">
-                                {projects.reduce((acc, p) => acc + p.meetingCount, 0)}
+                                {projects.reduce((acc, p) => acc + (p.meeting_count || 0), 0)}
                             </div>
                             <p className="text-xs text-muted-foreground mt-1">
                                 Across all projects
@@ -224,14 +226,14 @@ export default function ProjectsPage() {
                 ) : (
                     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                         {filteredProjects.map((project) => {
-                            const createdDate = new Date(project.createdAt).toLocaleDateString('en-US', {
+                            const createdDate = new Date(project.created_at).toLocaleDateString('en-US', {
                                 month: 'short',
                                 day: 'numeric',
                                 year: 'numeric'
                             });
                             
                             return (
-                                <Card key={project.name} className="hover:shadow-md transition-shadow">
+                                <Card key={project.id} className="hover:shadow-md transition-shadow">
                                     <CardHeader>
                                         <div className="flex items-start justify-between">
                                             <div className="flex items-center gap-3">
@@ -239,7 +241,7 @@ export default function ProjectsPage() {
                                                     <FolderKanban className="size-5" />
                                                 </div>
                                                 <div>
-                                                    <CardTitle className="text-base">{project.displayName}</CardTitle>
+                                                    <CardTitle className="text-base">{project.display_name}</CardTitle>
                                                 </div>
                                             </div>
                                             <DropdownMenu>
@@ -250,7 +252,7 @@ export default function ProjectsPage() {
                                                 </DropdownMenuTrigger>
                                                 <DropdownMenuContent align="end">
                                                     <DropdownMenuItem asChild>
-                                                        <Link href={`/projects/${encodeURIComponent(project.name)}`}>View Details</Link>
+                                                        <Link href={`/projects/${encodeURIComponent(project.id)}`}>View Details</Link>
                                                     </DropdownMenuItem>
                                                     <DropdownMenuItem onClick={(e) => {
                                                         e.preventDefault();
@@ -263,14 +265,14 @@ export default function ProjectsPage() {
                                             </DropdownMenu>
                                         </div>
                                         <CardDescription className="mt-2">
-                                            {project.meetingCount} {project.meetingCount === 1 ? 'meeting' : 'meetings'} in this project
+                                            {project.meeting_count} {project.meeting_count === 1 ? 'meeting' : 'meetings'} in this project
                                         </CardDescription>
                                     </CardHeader>
                                     <CardContent>
                                         <div className="space-y-3">
                                             <div className="flex items-center justify-between text-sm">
                                                 <span className="text-muted-foreground">Meetings</span>
-                                                <span className="font-semibold">{project.meetingCount}</span>
+                                                <span className="font-semibold">{project.meeting_count}</span>
                                             </div>
                                             <div className="flex items-center justify-between">
                                                 <span className="text-xs text-muted-foreground">
@@ -279,9 +281,9 @@ export default function ProjectsPage() {
                                                 <Badge className="bg-success/10 text-success border-success/20">Active</Badge>
                                             </div>
                                             <div className="pt-2">
-                                                <Button asChild className="w-full" variant={project.meetingCount === 0 ? "default" : "outline"}>
-                                                    <Link href={project.meetingCount === 0 ? `/meetings/new` : `/projects/${encodeURIComponent(project.name)}`}>
-                                                        {project.meetingCount === 0 ? (
+                                                <Button asChild className="w-full" variant={project.meeting_count === 0 ? "default" : "outline"}>
+                                                    <Link href={project.meeting_count === 0 ? `/meetings/new` : `/projects/${encodeURIComponent(project.id)}`}>
+                                                        {project.meeting_count === 0 ? (
                                                             <>
                                                                 <Plus className="size-4 mr-2" />
                                                                 Upload Recording
@@ -307,8 +309,8 @@ export default function ProjectsPage() {
                     <DialogHeader>
                         <DialogTitle>Delete Project</DialogTitle>
                         <DialogDescription>
-                            Are you sure you want to delete "{projectToDelete?.displayName}"? This will permanently delete
-                            the project and all {projectToDelete?.meetingCount} associated meeting(s) from the RAG store. This action cannot be undone.
+                            Are you sure you want to delete "{projectToDelete?.display_name}"? This will permanently delete
+                            the project and all {projectToDelete?.meeting_count || 0} associated meeting(s) from the RAG store. This action cannot be undone.
                         </DialogDescription>
                     </DialogHeader>
                     <DialogFooter>

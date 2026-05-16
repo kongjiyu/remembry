@@ -10,6 +10,8 @@ import { useEffect, useState } from "react";
 import { buildUserHeaders, getOrCreateRemembryUserId } from "@/lib/clientUser";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
+import { apiFetch } from "@/lib/apiFetch";
+import { invoke } from "@tauri-apps/api/core";
 
 interface ApiKeyStatus {
     hasKey: boolean;
@@ -19,6 +21,86 @@ interface ApiKeyStatus {
     createdAt: string | null;
     lastUsed: string | null;
     usageCount: number;
+}
+
+function canInvokeTauri(): boolean {
+    const tauriGlobal = globalThis as typeof globalThis & {
+        __TAURI_INTERNALS__?: { invoke?: unknown };
+    };
+    return typeof window !== "undefined" && typeof tauriGlobal.__TAURI_INTERNALS__?.invoke === "function";
+}
+
+function getErrorMessage(error: unknown, fallback: string): string {
+    if (error instanceof Error) {
+        return error.message;
+    }
+
+    if (typeof error === "string" && error.trim()) {
+        return error;
+    }
+
+    return fallback;
+}
+
+async function loadGeminiKeyStatus(): Promise<ApiKeyStatus> {
+    if (canInvokeTauri()) {
+        console.info("[settings] gemini key status path: tauri");
+        return invoke<ApiKeyStatus>("get_gemini_key_status");
+    }
+
+    console.info("[settings] gemini key status path: web");
+    getOrCreateRemembryUserId();
+    const response = await apiFetch("/api/settings/gemini-key", {
+        headers: buildUserHeaders(),
+    });
+
+    if (!response.ok) {
+        throw new Error("Failed to load Gemini API key status");
+    }
+
+    return response.json();
+}
+
+async function saveGeminiKey(apiKey: string): Promise<void> {
+    if (canInvokeTauri()) {
+        console.info("[settings] gemini key save path: tauri");
+        await invoke("save_gemini_key", { apiKey });
+        return;
+    }
+
+    console.info("[settings] gemini key save path: web");
+    const response = await apiFetch("/api/settings/gemini-key", {
+        method: "POST",
+        headers: buildUserHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify({ apiKey }),
+    });
+
+    if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(
+            typeof data === "object" && data && "error" in data
+                ? String(data.error)
+                : "Failed to save Gemini API key"
+        );
+    }
+}
+
+async function deleteGeminiKey(): Promise<void> {
+    if (canInvokeTauri()) {
+        console.info("[settings] gemini key delete path: tauri");
+        await invoke("delete_gemini_key");
+        return;
+    }
+
+    console.info("[settings] gemini key delete path: web");
+    const response = await apiFetch("/api/settings/gemini-key", {
+        method: "DELETE",
+        headers: buildUserHeaders(),
+    });
+
+    if (!response.ok) {
+        throw new Error("Failed to delete Gemini API key");
+    }
 }
 
 export default function SettingsPage() {
@@ -36,19 +118,11 @@ export default function SettingsPage() {
     }, []);
 
     useEffect(() => {
-        const loadGeminiKeyStatus = async () => {
+        const refreshGeminiKeyStatus = async () => {
             setIsLoadingKeyStatus(true);
             try {
-                getOrCreateRemembryUserId();
-                const response = await fetch("/api/settings/gemini-key", {
-                    headers: buildUserHeaders(),
-                });
-
-                if (!response.ok) {
-                    throw new Error("Failed to load Gemini API key status");
-                }
-
-                const data = await response.json();
+                const data = await loadGeminiKeyStatus();
+                console.info("[settings] gemini key status loaded:", { hasKey: data.hasKey });
                 setApiKeyStatus(data);
             } catch (error) {
                 console.error("Failed to load key status:", error);
@@ -57,7 +131,7 @@ export default function SettingsPage() {
             }
         };
 
-        loadGeminiKeyStatus();
+        refreshGeminiKeyStatus();
     }, []);
 
     const handleSaveApiKey = async () => {
@@ -66,33 +140,24 @@ export default function SettingsPage() {
             return;
         }
 
-        if (!apiKey.startsWith("AIza")) {
+        const trimmedApiKey = apiKey.trim();
+
+        if (!trimmedApiKey.startsWith("AIza")) {
             toast.error("Invalid Gemini API key format. Key should start with 'AIza'.");
             return;
         }
 
         setIsSavingKey(true);
         try {
-            const response = await fetch("/api/settings/gemini-key", {
-                method: "POST",
-                headers: buildUserHeaders({ "Content-Type": "application/json" }),
-                body: JSON.stringify({ apiKey: apiKey.trim() }),
-            });
-
-            if (!response.ok) {
-                const data = await response.json().catch(() => ({}));
-                throw new Error(data.error || "Failed to save Gemini API key");
-            }
-
-            const statusResponse = await fetch("/api/settings/gemini-key", {
-                headers: buildUserHeaders(),
-            });
-            const statusData = await statusResponse.json();
+            await saveGeminiKey(trimmedApiKey);
+            const statusData = await loadGeminiKeyStatus();
+            console.info("[settings] gemini key post-save status:", { hasKey: statusData.hasKey });
             setApiKeyStatus(statusData);
             setApiKey("");
             toast.success("Gemini API key saved successfully.");
         } catch (error) {
-            const message = error instanceof Error ? error.message : "Failed to save key";
+            console.error("Failed to save Gemini API key:", error);
+            const message = getErrorMessage(error, "Failed to save key");
             toast.error(message);
         } finally {
             setIsSavingKey(false);
@@ -102,14 +167,7 @@ export default function SettingsPage() {
     const handleDeleteApiKey = async () => {
         setIsDeleting(true);
         try {
-            const response = await fetch("/api/settings/gemini-key", {
-                method: "DELETE",
-                headers: buildUserHeaders(),
-            });
-
-            if (!response.ok) {
-                throw new Error("Failed to delete Gemini API key");
-            }
+            await deleteGeminiKey();
 
             setApiKeyStatus({
                 hasKey: false,
@@ -122,6 +180,7 @@ export default function SettingsPage() {
             });
             toast.success("Gemini API key deleted.");
         } catch (error) {
+            console.error("Failed to delete Gemini API key:", error);
             toast.error("Failed to delete API key.");
         } finally {
             setIsDeleting(false);
@@ -221,7 +280,11 @@ export default function SettingsPage() {
                                 </div>
                             </div>
                             <Badge variant={apiKeyStatus?.hasKey ? "default" : "secondary"} className="px-3 py-1">
-                                {apiKeyStatus?.hasKey ? (
+                                {isLoadingKeyStatus ? (
+                                    <span className="flex items-center gap-1">
+                                        <Loader2 className="size-3 animate-spin" /> Checking
+                                    </span>
+                                ) : apiKeyStatus?.hasKey ? (
                                     <span className="flex items-center gap-1">
                                         <CheckCircle2 className="size-3" /> Configured
                                     </span>

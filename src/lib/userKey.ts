@@ -139,14 +139,15 @@ export async function deleteGeminiApiKey(userId: string): Promise<void> {
 export async function incrementGeminiKeyUsageCount(userId: string): Promise<void> {
     const supabase = getSupabaseServerClient();
 
-    await supabase.rpc("increment_usage_count", { p_user_id: userId }).catch(() => {
-        // Fallback if RPC doesn't exist
-        // Just update last_used timestamp
-        supabase
+    try {
+        await supabase.rpc("increment_usage_count", { p_user_id: userId });
+    } catch {
+        // Fallback if RPC doesn't exist - just update last_used timestamp
+        await supabase
             .from("user_gemini_keys")
             .update({ last_used: new Date().toISOString() })
             .eq("user_id", userId);
-    });
+    }
 }
 
 export async function resolveGeminiApiKeyForRequest(request: NextRequest): Promise<string | null> {

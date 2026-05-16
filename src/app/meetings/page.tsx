@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Mic, Upload, Search, MoreVertical, Clock, CheckCircle2, Loader2, AlertCircle, Calendar, FolderKanban } from "lucide-react";
 import Link from "next/link";
+import { apiFetch } from "@/lib/apiFetch";
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -75,7 +76,7 @@ export default function MeetingsPage() {
     const fetchMeetings = async () => {
         try {
             setLoading(true);
-            const response = await fetch('/api/meetings');
+            const response = await apiFetch('/api/meetings');
 
             if (!response.ok) {
                 throw new Error('Failed to fetch meetings');

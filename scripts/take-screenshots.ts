@@ -74,8 +74,8 @@ async function takeScreenshots() {
       const stats = fs.statSync(`${OUTPUT_DIR}/${p.name}.png`);
       console.log(`   ✅ Screenshot saved (${stats.size} bytes)\n`);
 
-    } catch (error) {
-      console.error(`   ❌ Error: ${error.message}\n`);
+    } catch (error: unknown) {
+      console.error(`   ❌ Error: ${error instanceof Error ? error.message : String(error)}\n`);
     }
   }
 

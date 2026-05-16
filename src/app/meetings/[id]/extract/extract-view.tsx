@@ -8,6 +8,7 @@ import { Loader2, CheckCircle2, ListTodo, Gavel, HelpCircle, FileText, ArrowLeft
 import { toast } from "sonner";
 import Link from "next/link";
 import { buildUserHeaders } from "@/lib/clientUser";
+import { apiFetch } from "@/lib/apiFetch";
 
 interface MeetingNotes {
     summary: string;
@@ -32,7 +33,7 @@ export function ExtractView({
     const handleExtract = async () => {
         setIsLoading(true);
         try {
-            const res = await fetch(`/api/meetings/${meetingId}/extract`, {
+            const res = await apiFetch(`/api/meetings/${meetingId}/extract`, {
                 method: "POST",
                 headers: buildUserHeaders(),
             });
