@@ -4,6 +4,7 @@ pub mod projects;
 pub mod meetings;
 pub mod documents;
 pub mod gemini_key_metadata;
+pub mod upload_jobs;
 
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -14,16 +15,22 @@ pub use projects::Project;
 pub use meetings::Meeting;
 pub use meetings::MeetingNotes;
 pub use meetings::TranscriptionResult;
-pub use meetings::ActionItem;
-pub use meetings::QAndA;
 pub use documents::Document;
-pub use gemini_key_metadata::GeminiKeyMetadata;
+pub use upload_jobs::UploadJobRecord;
 
 pub struct DbPool {
     conn: Arc<Mutex<Connection>>,
 }
 
-static DB_POOL: std::sync::OnceLock<Arc<Mutex<Option<DbPool>>>> = std::sync::OnceLock::new();
+impl Clone for DbPool {
+    fn clone(&self) -> Self {
+        Self {
+            conn: Arc::clone(&self.conn),
+        }
+    }
+}
+
+pub(crate) static DB_POOL: std::sync::OnceLock<Arc<Mutex<Option<DbPool>>>> = std::sync::OnceLock::new();
 
 fn schema_sql() -> &'static str {
     r#"
@@ -70,6 +77,22 @@ fn schema_sql() -> &'static str {
         last_used    TEXT,
         usage_count  INTEGER DEFAULT 0
     );
+
+    CREATE TABLE IF NOT EXISTS upload_jobs (
+        job_id          TEXT PRIMARY KEY,
+        status          TEXT NOT NULL,
+        progress        INTEGER NOT NULL,
+        message         TEXT NOT NULL,
+        error           TEXT,
+        meeting_id      TEXT,
+        project_id      TEXT NOT NULL,
+        title           TEXT NOT NULL,
+        created_at      TEXT NOT NULL,
+        updated_at      TEXT NOT NULL,
+        temp_path       TEXT,
+        params_json     TEXT,
+        gemini_file_name TEXT
+    );
     "#
 }
 
@@ -98,6 +121,7 @@ pub fn init_db(app_data_dir: &PathBuf) -> Result<()> {
     Ok(())
 }
 
+#[allow(dead_code)]
 pub fn get_db() -> Option<Arc<Mutex<Option<DbPool>>>> {
     DB_POOL.get().cloned()
 }
@@ -106,10 +130,17 @@ pub fn with_db<F, T>(f: F) -> Result<T, String>
 where
     F: FnOnce(&rusqlite::Connection) -> Result<T, String>,
 {
-    let pool_guard = get_db().ok_or_else(|| "Database not initialized".to_string())?;
+    with_db_impl(DB_POOL.get().cloned(), f)
+}
+
+pub fn with_db_impl<F, T>(pool_opt: Option<Arc<Mutex<Option<DbPool>>>>, f: F) -> Result<T, String>
+where
+    F: FnOnce(&rusqlite::Connection) -> Result<T, String>,
+{
+    let pool_guard = pool_opt.ok_or_else(|| "Database not initialized".to_string())?;
     let pool = pool_guard.lock().map_err(|_| "Database lock poisoned".to_string())?;
     let pool = pool.as_ref().ok_or_else(|| "Database not initialized".to_string())?;
-    let conn = pool.conn();
-    let conn_guard = conn.lock().map_err(|_| "Connection lock poisoned".to_string())?;
+    let conn_arc = pool.conn();
+    let conn_guard = conn_arc.lock().map_err(|_| "Connection lock poisoned".to_string())?;
     f(&conn_guard)
 }

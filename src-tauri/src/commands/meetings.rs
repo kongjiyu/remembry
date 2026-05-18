@@ -58,3 +58,23 @@ pub fn get_meeting_metadata(meeting_id: String) -> Result<GetMeetingMetadataResp
 pub fn upsert_meeting(meeting: Meeting) -> Result<(), String> {
     db::meetings::upsert_meeting(&meeting).map_err(|e| e.to_string())
 }
+
+#[derive(Debug, serde::Serialize)]
+pub struct DeleteMeetingResponse {
+    pub success: bool,
+    pub message: String,
+}
+
+#[tauri::command]
+pub fn delete_meeting(meeting_id: String) -> Result<DeleteMeetingResponse, String> {
+    let deleted = db::meetings::delete_meeting(&meeting_id)
+        .map_err(|e| e.to_string())?;
+    if deleted {
+        Ok(DeleteMeetingResponse {
+            success: true,
+            message: "Meeting deleted successfully.".to_string(),
+        })
+    } else {
+        Err("Meeting not found".to_string())
+    }
+}

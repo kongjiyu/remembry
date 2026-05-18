@@ -3,7 +3,7 @@
 use crate::db::{self, MeetingNotes};
 use crate::gemini::{self, GeminiClient};
 use crate::secrets;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 
 const LOCAL_USER: &str = "local_user";
 

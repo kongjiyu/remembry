@@ -1,7 +1,7 @@
 //! Upload session state machine.
 
 use std::path::PathBuf;
-use std::fs::{File, OpenOptions};
+use std::fs::OpenOptions;
 use std::io::Write;
 use thiserror::Error;
 
@@ -13,6 +13,7 @@ pub enum UploadError {
     Io(#[from] std::io::Error),
     #[error("invalid chunk: {0}")]
     InvalidChunk(String),
+    #[allow(dead_code)]
     #[error("upload session not found")]
     NotFound,
     #[error("session already finalized")]
@@ -20,7 +21,9 @@ pub enum UploadError {
 }
 
 pub struct UploadSession {
+    #[allow(dead_code)]
     upload_id: String,
+    #[allow(dead_code)]
     file_name: String,
     total_chunks: u32,
     received_chunks: Vec<bool>,
@@ -30,7 +33,9 @@ pub struct UploadSession {
 
 impl UploadSession {
     pub fn new(upload_id: &str, file_name: &str, total_chunks: u32, upload_dir: &PathBuf) -> Result<Self, String> {
-        let temp_path = upload_dir.join(format!("{}_{}", upload_id, file_name));
+        // Use safe internal temp path — never the user-provided file_name directly.
+        // This prevents filesystem errors from titles with Windows-invalid chars (/ \ : * ? " < > |)
+        let temp_path = upload_dir.join(format!("{}.upload", upload_id));
         let received_chunks = vec![false; total_chunks as usize];
 
         Ok(Self {
@@ -105,14 +110,17 @@ impl UploadSession {
         Ok(())
     }
 
+    #[allow(dead_code)]
     pub fn temp_path(&self) -> &PathBuf {
         &self.temp_path
     }
 
+    #[allow(dead_code)]
     pub fn file_name(&self) -> &str {
         &self.file_name
     }
 
+    #[allow(dead_code)]
     pub fn upload_id(&self) -> &str {
         &self.upload_id
     }
@@ -155,5 +163,21 @@ impl UploadManager {
             session.cancel().map_err(|e| e.to_string())?;
         }
         Ok(())
+    }
+
+    pub fn has_session(&self, upload_id: &str) -> bool {
+        if let Ok(state) = self.state.lock() {
+            state.has_session(upload_id)
+        } else {
+            false
+        }
+    }
+
+    pub fn session_count(&self) -> usize {
+        self.state.lock().map(|s| s.session_count()).unwrap_or(0)
+    }
+
+    pub fn session_ids(&self) -> Vec<String> {
+        self.state.lock().map(|s| s.session_ids()).unwrap_or_default()
     }
 }

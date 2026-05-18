@@ -5,9 +5,8 @@
   "identifier": "com.remembry.app",
   "build": {
     "beforeDevCommand": "npm run dev",
-    "beforeBuildCommand": "npm run build:tauri",
-    "frontendDist": "../out",
-    "devUrl": "http://localhost:3000"
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../out"
   },
   "app": {
     "withGlobalTauri": false,

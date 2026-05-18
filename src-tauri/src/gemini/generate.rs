@@ -1,8 +1,8 @@
 //! Gemini generateContent — transcription and note extraction.
 
-use crate::db::{TranscriptionResult, MeetingNotes, ActionItem, QAndA};
+use crate::db::{TranscriptionResult, MeetingNotes};
 use crate::gemini::{GeminiClient, retry_with_backoff, is_retryable_error};
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
 const TRANSCRIPTION_MODEL: &str = "gemini-3-flash-preview";
 const EXTRACTION_MODEL: &str = "gemini-3-flash-preview";

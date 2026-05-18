@@ -220,3 +220,282 @@ pub struct MeetingMetadata {
     pub default_language: Option<String>,
     pub created_at: Option<String>,
 }
+
+pub fn delete_meeting(meeting_id: &str) -> Result<bool, String> {
+    with_db(|conn| delete_meeting_inner(conn, meeting_id))
+}
+
+/// Delete a meeting and its associated transcript documents.
+/// Takes an explicit connection so tests can use with_db_impl on an isolated pool.
+pub fn delete_meeting_inner(conn: &rusqlite::Connection, meeting_id: &str) -> Result<bool, String> {
+    // Fetch meeting to get project_id and transcription for legacy cleanup
+    let meeting: Option<Meeting> = {
+        let mut stmt = conn.prepare(
+            "SELECT id, project_id, title, context, file_name, file_size, mime_type, file_type, created_at, transcription, notes_by_language, default_language, available_languages FROM meetings WHERE id = ?1"
+        ).map_err(|e| e.to_string())?;
+        let mut rows = stmt.query_map(params![meeting_id], meeting_row_map)
+            .map_err(|e| e.to_string())?;
+        rows.next().transpose().map_err(|e| e.to_string())?
+    };
+
+    let Some(meeting) = meeting else {
+        return Ok(false);
+    };
+
+    // Delete deterministic transcript document
+    let deterministic_id = format!("meeting-transcript/{}", meeting_id);
+    conn.execute(
+        "DELETE FROM project_documents WHERE id = ?1",
+        params![deterministic_id],
+    ).map_err(|e| e.to_string())?;
+
+    // Delete legacy transcript documents where id matches old pattern (documents/uuid)
+    // and project_id, display_name, mime_type, content exactly match the meeting's transcript
+    if let Some(ref transcription) = meeting.transcription {
+        let legacy_display_name = format!("{}.txt", meeting.title);
+        conn.execute(
+            "DELETE FROM project_documents WHERE id LIKE 'documents/%' AND project_id = ?1 AND display_name = ?2 AND mime_type = 'text/plain' AND content = ?3",
+            params![meeting.project_id, legacy_display_name, transcription.text],
+        ).map_err(|e| e.to_string())?;
+    }
+
+    // Delete the meeting row
+    conn.execute("DELETE FROM meetings WHERE id = ?1", params![meeting_id])
+        .map_err(|e| e.to_string())?;
+
+    Ok(true)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::{Arc, Mutex};
+
+    /// Isolated DB pool per test — same pattern as db::upload_jobs::tests.
+    /// Avoids global state poisoning and parallel test interference.
+    struct TestDb {
+        pool: crate::db::DbPool,
+        _guard: std::sync::MutexGuard<'static, ()>,
+    }
+
+    static TEST_GUARD: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    impl TestDb {
+        fn new() -> Self {
+            let _guard = TEST_GUARD.lock().unwrap();
+            let tmp = tempfile::tempdir().unwrap();
+            let db_path = tmp.path().join("test.db");
+            let pool = crate::db::DbPool::new(&db_path).unwrap();
+            // Leak tmp so the DB file stays valid for the full test.
+            std::mem::forget(tmp);
+            Self { pool, _guard }
+        }
+
+        fn with_db<F, T>(&self, f: F) -> Result<T, String>
+        where
+            F: FnOnce(&rusqlite::Connection) -> Result<T, String>,
+        {
+            let conn_arc = self.pool.conn();
+            let conn_guard = conn_arc.lock().map_err(|e| e.to_string())?;
+            f(&conn_guard)
+        }
+    }
+
+    #[test]
+    fn delete_meeting_removes_deterministic_transcript_document() {
+        let td = TestDb::new();
+        let meeting_id = "test-meeting-det-001";
+        let project_id = "test-project-det-001";
+        let now = chrono::Utc::now().to_rfc3339();
+
+        // Create project (INSERT OR IGNORE for idempotence if guard is poisoned)
+        td.with_db(|conn| {
+            conn.execute(
+                "INSERT OR IGNORE INTO projects (id, display_name, color, description, goals, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                rusqlite::params![project_id, "Test Project", "bg-blue-500", "", "", &now],
+            ).map_err(|e| e.to_string())?;
+            Ok(())
+        }).unwrap();
+
+        let transcription_json = serde_json::to_string(&TranscriptionResult {
+            text: "Test transcript content".to_string(),
+            language: Some("en".to_string()),
+        }).unwrap();
+
+        // Insert meeting
+        td.with_db(|conn| {
+            conn.execute(
+                "INSERT INTO meetings (id, project_id, title, context, file_name, file_size, mime_type, file_type, created_at, transcription, notes_by_language, default_language, available_languages) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+                rusqlite::params![
+                    meeting_id,
+                    project_id,
+                    "Test Meeting",
+                    Option::<String>::None,
+                    "test.mp3",
+                    1234_i64,
+                    "audio/mpeg",
+                    "audio",
+                    &now,
+                    &transcription_json,
+                    Option::<String>::None,
+                    "en",
+                    Option::<String>::None,
+                ],
+            ).map_err(|e| e.to_string())?;
+            Ok(())
+        }).unwrap();
+
+        // Insert deterministic transcript document
+        let doc_id = format!("meeting-transcript/{}", meeting_id);
+        td.with_db(|conn| {
+            conn.execute(
+                "INSERT INTO project_documents (id, project_id, display_name, mime_type, content, metadata, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                rusqlite::params![
+                    &doc_id,
+                    project_id,
+                    "Test Meeting.txt",
+                    "text/plain",
+                    "Test transcript content",
+                    serde_json::to_string(&serde_json::json!({"source": "meeting_transcript", "meeting_id": meeting_id})).unwrap(),
+                    &now,
+                ],
+            ).map_err(|e| e.to_string())?;
+            Ok(())
+        }).unwrap();
+
+        // Verify document exists before deletion
+        let doc_exists_before = td.with_db(|conn| {
+            let mut stmt = conn.prepare("SELECT 1 FROM project_documents WHERE id = ?1 LIMIT 1").map_err(|e| e.to_string())?;
+            Ok(stmt.query_row(params![&doc_id], |_row| Ok(())).is_ok())
+        }).unwrap();
+        assert!(doc_exists_before, "Document should exist before deletion");
+
+        // Delete the meeting via delete_meeting API (uses global — but our isolated pool is not registered there,
+        // so we call the inner logic directly using with_db_impl on our pool)
+        let pool_arc: Arc<Mutex<Option<crate::db::DbPool>>> = Arc::new(Mutex::new(Some(td.pool.clone())));
+        let result = crate::db::with_db_impl(Some(pool_arc.clone()), |conn| {
+            delete_meeting_inner(conn, meeting_id)
+        });
+        assert!(result.is_ok(), "delete_meeting should succeed");
+        assert!(result.unwrap(), "delete_meeting should return true for existing meeting");
+
+        // Verify meeting is gone
+        let meeting_still_exists = td.with_db(|conn| {
+            let mut stmt = conn.prepare("SELECT 1 FROM meetings WHERE id = ?1 LIMIT 1").map_err(|e| e.to_string())?;
+            Ok(stmt.query_row(params![meeting_id], |_row| Ok(())).is_ok())
+        }).unwrap();
+        assert!(!meeting_still_exists, "Meeting should be deleted");
+
+        // Verify deterministic document is gone
+        let doc_still_exists = td.with_db(|conn| {
+            let mut stmt = conn.prepare("SELECT 1 FROM project_documents WHERE id = ?1 LIMIT 1").map_err(|e| e.to_string())?;
+            Ok(stmt.query_row(params![&doc_id], |_row| Ok(())).is_ok())
+        }).unwrap();
+        assert!(!doc_still_exists, "Deterministic transcript document should be deleted with meeting");
+    }
+
+    #[test]
+    fn delete_meeting_removes_legacy_transcript_document() {
+        let td = TestDb::new();
+        let meeting_id = "test-meeting-legacy-001";
+        let project_id = "test-project-legacy-001";
+        let legacy_doc_id = "documents/test-legacy-doc-001";
+        let now = chrono::Utc::now().to_rfc3339();
+        let transcript_text = "Legacy transcript content for cleanup test";
+
+        // Create project
+        td.with_db(|conn| {
+            conn.execute(
+                "INSERT OR IGNORE INTO projects (id, display_name, color, description, goals, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                rusqlite::params![project_id, "Test Project", "bg-blue-500", "", "", &now],
+            ).map_err(|e| e.to_string())?;
+            Ok(())
+        }).unwrap();
+
+        let transcription_json = serde_json::to_string(&TranscriptionResult {
+            text: transcript_text.to_string(),
+            language: Some("en".to_string()),
+        }).unwrap();
+
+        // Insert meeting
+        td.with_db(|conn| {
+            conn.execute(
+                "INSERT INTO meetings (id, project_id, title, context, file_name, file_size, mime_type, file_type, created_at, transcription, notes_by_language, default_language, available_languages) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+                rusqlite::params![
+                    meeting_id,
+                    project_id,
+                    "Legacy Meeting Title",
+                    Option::<String>::None,
+                    "test.mp3",
+                    1234_i64,
+                    "audio/mpeg",
+                    "audio",
+                    &now,
+                    &transcription_json,
+                    Option::<String>::None,
+                    "en",
+                    Option::<String>::None,
+                ],
+            ).map_err(|e| e.to_string())?;
+            Ok(())
+        }).unwrap();
+
+        // Insert legacy transcript document (old pattern: documents/uuid)
+        td.with_db(|conn| {
+            conn.execute(
+                "INSERT INTO project_documents (id, project_id, display_name, mime_type, content, metadata, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                rusqlite::params![
+                    &legacy_doc_id,
+                    project_id,
+                    "Legacy Meeting Title.txt",
+                    "text/plain",
+                    transcript_text,
+                    Option::<String>::None,
+                    &now,
+                ],
+            ).map_err(|e| e.to_string())?;
+            Ok(())
+        }).unwrap();
+
+        // Verify legacy document exists before deletion
+        let doc_exists_before = td.with_db(|conn| {
+            let mut stmt = conn.prepare("SELECT 1 FROM project_documents WHERE id = ?1 LIMIT 1").map_err(|e| e.to_string())?;
+            Ok(stmt.query_row(params![&legacy_doc_id], |_row| Ok(())).is_ok())
+        }).unwrap();
+        assert!(doc_exists_before, "Legacy document should exist before deletion");
+
+        // Delete the meeting
+        let pool_arc: Arc<Mutex<Option<crate::db::DbPool>>> = Arc::new(Mutex::new(Some(td.pool.clone())));
+        let result = crate::db::with_db_impl(Some(pool_arc.clone()), |conn| {
+            delete_meeting_inner(conn, meeting_id)
+        });
+        assert!(result.is_ok(), "delete_meeting should succeed");
+        assert!(result.unwrap(), "delete_meeting should return true for existing meeting");
+
+        // Verify meeting is gone
+        let meeting_still_exists = td.with_db(|conn| {
+            let mut stmt = conn.prepare("SELECT 1 FROM meetings WHERE id = ?1 LIMIT 1").map_err(|e| e.to_string())?;
+            Ok(stmt.query_row(params![meeting_id], |_row| Ok(())).is_ok())
+        }).unwrap();
+        assert!(!meeting_still_exists, "Meeting should be deleted");
+
+        // Verify legacy document with matching content is gone
+        let doc_still_exists = td.with_db(|conn| {
+            let mut stmt = conn.prepare("SELECT 1 FROM project_documents WHERE id = ?1 LIMIT 1").map_err(|e| e.to_string())?;
+            Ok(stmt.query_row(params![&legacy_doc_id], |_row| Ok(())).is_ok())
+        }).unwrap();
+        assert!(!doc_still_exists, "Legacy transcript document should be deleted when content matches");
+    }
+
+    #[test]
+    fn delete_meeting_returns_false_for_nonexistent() {
+        let td = TestDb::new();
+
+        let pool_arc: Arc<Mutex<Option<crate::db::DbPool>>> = Arc::new(Mutex::new(Some(td.pool.clone())));
+        let result = crate::db::with_db_impl(Some(pool_arc.clone()), |conn| {
+            delete_meeting_inner(conn, "nonexistent-meeting-id")
+        });
+        assert!(result.is_ok(), "delete_meeting should succeed");
+        assert!(!result.unwrap(), "delete_meeting should return false for nonexistent meeting");
+    }
+}

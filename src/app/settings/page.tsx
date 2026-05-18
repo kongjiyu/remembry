@@ -7,10 +7,8 @@ import { Input } from "@/components/ui/input";
 import { Palette, Moon, Sun, Monitor, KeyRound, Loader2, CheckCircle2, AlertCircle, ExternalLink, Copy, Trash2, Eye, EyeOff } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useEffect, useState } from "react";
-import { buildUserHeaders, getOrCreateRemembryUserId } from "@/lib/clientUser";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
-import { apiFetch } from "@/lib/apiFetch";
 import { invoke } from "@tauri-apps/api/core";
 
 interface ApiKeyStatus {
@@ -23,84 +21,26 @@ interface ApiKeyStatus {
     usageCount: number;
 }
 
-function canInvokeTauri(): boolean {
-    const tauriGlobal = globalThis as typeof globalThis & {
-        __TAURI_INTERNALS__?: { invoke?: unknown };
-    };
-    return typeof window !== "undefined" && typeof tauriGlobal.__TAURI_INTERNALS__?.invoke === "function";
-}
-
 function getErrorMessage(error: unknown, fallback: string): string {
     if (error instanceof Error) {
         return error.message;
     }
-
     if (typeof error === "string" && error.trim()) {
         return error;
     }
-
     return fallback;
 }
 
 async function loadGeminiKeyStatus(): Promise<ApiKeyStatus> {
-    if (canInvokeTauri()) {
-        console.info("[settings] gemini key status path: tauri");
-        return invoke<ApiKeyStatus>("get_gemini_key_status");
-    }
-
-    console.info("[settings] gemini key status path: web");
-    getOrCreateRemembryUserId();
-    const response = await apiFetch("/api/settings/gemini-key", {
-        headers: buildUserHeaders(),
-    });
-
-    if (!response.ok) {
-        throw new Error("Failed to load Gemini API key status");
-    }
-
-    return response.json();
+    return invoke<ApiKeyStatus>("get_gemini_key_status");
 }
 
 async function saveGeminiKey(apiKey: string): Promise<void> {
-    if (canInvokeTauri()) {
-        console.info("[settings] gemini key save path: tauri");
-        await invoke("save_gemini_key", { apiKey });
-        return;
-    }
-
-    console.info("[settings] gemini key save path: web");
-    const response = await apiFetch("/api/settings/gemini-key", {
-        method: "POST",
-        headers: buildUserHeaders({ "Content-Type": "application/json" }),
-        body: JSON.stringify({ apiKey }),
-    });
-
-    if (!response.ok) {
-        const data = await response.json().catch(() => ({}));
-        throw new Error(
-            typeof data === "object" && data && "error" in data
-                ? String(data.error)
-                : "Failed to save Gemini API key"
-        );
-    }
+    await invoke("save_gemini_key", { apiKey });
 }
 
 async function deleteGeminiKey(): Promise<void> {
-    if (canInvokeTauri()) {
-        console.info("[settings] gemini key delete path: tauri");
-        await invoke("delete_gemini_key");
-        return;
-    }
-
-    console.info("[settings] gemini key delete path: web");
-    const response = await apiFetch("/api/settings/gemini-key", {
-        method: "DELETE",
-        headers: buildUserHeaders(),
-    });
-
-    if (!response.ok) {
-        throw new Error("Failed to delete Gemini API key");
-    }
+    await invoke("delete_gemini_key");
 }
 
 export default function SettingsPage() {
@@ -122,7 +62,6 @@ export default function SettingsPage() {
             setIsLoadingKeyStatus(true);
             try {
                 const data = await loadGeminiKeyStatus();
-                console.info("[settings] gemini key status loaded:", { hasKey: data.hasKey });
                 setApiKeyStatus(data);
             } catch (error) {
                 console.error("Failed to load key status:", error);
@@ -151,7 +90,6 @@ export default function SettingsPage() {
         try {
             await saveGeminiKey(trimmedApiKey);
             const statusData = await loadGeminiKeyStatus();
-            console.info("[settings] gemini key post-save status:", { hasKey: statusData.hasKey });
             setApiKeyStatus(statusData);
             setApiKey("");
             toast.success("Gemini API key saved successfully.");
@@ -168,7 +106,6 @@ export default function SettingsPage() {
         setIsDeleting(true);
         try {
             await deleteGeminiKey();
-
             setApiKeyStatus({
                 hasKey: false,
                 maskedKey: null,
@@ -418,14 +355,14 @@ export default function SettingsPage() {
                             <div>
                                 <CardTitle>Local Storage</CardTitle>
                                 <CardDescription>
-                                    Your data is stored locally in Supabase
+                                    Your data is stored locally in SQLite
                                 </CardDescription>
                             </div>
                         </div>
                     </CardHeader>
                     <CardContent className="space-y-4">
                         <div className="text-sm text-muted-foreground space-y-2">
-                            <p>All your meetings, projects, and settings are stored in your local Supabase database.</p>
+                            <p>All your meetings, projects, and settings are stored in your local SQLite database.</p>
                             <p>The API key is stored securely and only used for AI requests.</p>
                         </div>
                     </CardContent>

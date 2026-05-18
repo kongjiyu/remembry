@@ -39,8 +39,10 @@ export function AudioRecorder({ onRecordingComplete, autoStart, className, onUns
         requestPermission,
     } = useAudioRecorder();
 
-    const autoStartRef = useRef(autoStart);
-    autoStartRef.current = autoStart;
+    const autoStartRef = useRef<boolean | undefined>(undefined);
+    if (autoStartRef.current === undefined) {
+        autoStartRef.current = autoStart;
+    }
 
     // Track if we've already triggered auto-start to prevent double-recording
     const autoStartedRef = useRef(false);

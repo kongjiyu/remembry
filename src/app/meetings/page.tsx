@@ -6,34 +6,25 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { Mic, Upload, Search, MoreVertical, Clock, CheckCircle2, Loader2, AlertCircle, Calendar, FolderKanban } from "lucide-react";
+import { Mic, Upload, Search, MoreVertical, Clock, CheckCircle2, Loader2, AlertCircle, FolderKanban, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { apiFetch } from "@/lib/apiFetch";
+import { normalizeMeeting, buildProjectMap, formatMimeBadgeLabel, type NormalizedMeeting } from "@/lib/meetingViews";
+import { UploadJobsBanner } from "@/components/ui/upload-jobs-banner";
 import {
     DropdownMenu,
     DropdownMenuContent,
     DropdownMenuItem,
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-
-interface Meeting {
-    name: string;
-    displayName: string;
-    uploadTime?: string;
-    mimeType?: string;
-}
-
-interface Project {
-    name: string;          // RAG store resource name - acts as primary key
-    displayName: string;   // User-entered project name
-    meetings: Meeting[];
-    meetingCount: number;
-}
-
-interface MeetingWithProject extends Meeting {
-    projectName: string;   // RAG store resource name
-    projectDisplayName: string;  // User-entered project name
-}
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from "@/components/ui/dialog";
 
 function getStatusInfo(status: string) {
     switch (status) {
@@ -65,9 +56,12 @@ function getStatusInfo(status: string) {
 }
 
 export default function MeetingsPage() {
-    const [meetings, setMeetings] = useState<MeetingWithProject[]>([]);
+    const [meetings, setMeetings] = useState<NormalizedMeeting[]>([]);
     const [loading, setLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState("");
+    const [meetingToDelete, setMeetingToDelete] = useState<NormalizedMeeting | null>(null);
+    const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+    const [isDeleting, setIsDeleting] = useState(false);
 
     useEffect(() => {
         fetchMeetings();
@@ -76,16 +70,19 @@ export default function MeetingsPage() {
     const fetchMeetings = async () => {
         try {
             setLoading(true);
-            const response = await apiFetch('/api/meetings');
+            const [meetingsRes, projectsRes] = await Promise.all([
+                apiFetch('/api/meetings'),
+                apiFetch('/api/projects'),
+            ]);
 
-            if (!response.ok) {
-                throw new Error('Failed to fetch meetings');
-            }
+            if (!meetingsRes.ok) throw new Error('Failed to fetch meetings');
 
-            const data = await response.json();
-            const allMeetings: MeetingWithProject[] = data.meetings || [];
+            const meetingsData = await meetingsRes.json();
+            const projectsData = projectsRes.ok ? await projectsRes.json() : { projects: [] };
 
-            setMeetings(allMeetings);
+            const rawMeetings: Record<string, unknown>[] = meetingsData.meetings || [];
+            const projectMap = buildProjectMap((projectsData.projects || []) as Array<{ id: string; display_name: string }>);
+            setMeetings(rawMeetings.map(m => normalizeMeeting(m, projectMap)));
         } catch (error) {
             console.error('Error fetching meetings:', error);
         } finally {
@@ -114,6 +111,31 @@ export default function MeetingsPage() {
             minute: '2-digit'
         });
     };
+
+    const handleDeleteMeeting = async () => {
+        if (!meetingToDelete) return;
+
+        try {
+            setIsDeleting(true);
+            const response = await apiFetch(`/api/meetings/${encodeURIComponent(meetingToDelete.id)}`, {
+                method: 'DELETE',
+            });
+
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.error || 'Failed to delete meeting');
+            }
+
+            setMeetings(prev => prev.filter(m => m.id !== meetingToDelete.id));
+        } catch (error) {
+            console.error('Error deleting meeting:', error);
+            alert(error instanceof Error ? error.message : 'Failed to delete meeting');
+        } finally {
+            setIsDeleting(false);
+            setShowDeleteDialog(false);
+            setMeetingToDelete(null);
+        }
+    };
     return (
         <DashboardLayout breadcrumbs={[{ label: "Meetings" }]} title="Meetings">
             <div className="space-y-6">
@@ -121,8 +143,8 @@ export default function MeetingsPage() {
                 <div className="flex flex-col sm:flex-row gap-4 justify-between">
                     <div className="relative flex-1 max-w-md">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-                        <Input 
-                            placeholder="Search meetings..." 
+                        <Input
+                            placeholder="Search meetings..."
                             className="pl-10"
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
@@ -135,6 +157,9 @@ export default function MeetingsPage() {
                         </Link>
                     </Button>
                 </div>
+
+                {/* Active / Failed Upload Jobs */}
+                <UploadJobsBanner onJobCompleted={fetchMeetings} />
 
                 {/* Loading State */}
                 {loading ? (
@@ -152,7 +177,7 @@ export default function MeetingsPage() {
                                 {searchQuery ? "No meetings found" : "No meetings yet"}
                             </h3>
                             <p className="text-muted-foreground text-center max-w-sm mb-4">
-                                {searchQuery 
+                                {searchQuery
                                     ? "Try adjusting your search query"
                                     : "Upload your first meeting recording to get started with AI-powered transcription and note extraction."
                                 }
@@ -172,12 +197,15 @@ export default function MeetingsPage() {
                     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                         {filteredMeetings.map((meeting, index) => {
                             const statusInfo = getStatusInfo("completed");
-                            const encodedDocName = encodeURIComponent(meeting.name);
+                            const encodedDocName = encodeURIComponent(meeting.id || meeting.name || String(index));
                             return (
-                                <Card key={meeting.name || index} className="group hover:shadow-lg transition-all hover:border-primary/50 relative">
+                                <Card key={meeting.id || meeting.name || index} className="group hover:shadow-lg transition-all hover:border-primary/50 relative">
                                     <CardHeader className="pb-3">
                                         <div className="flex items-start justify-between gap-2 min-w-0">
-                                            <div className="flex items-start gap-3 min-w-0 flex-1">
+                                            <Link
+                                                href={`/meetings/detail?id=${encodedDocName}&projectName=${encodeURIComponent(meeting.project_id || meeting.projectName)}&displayName=${encodeURIComponent(meeting.projectDisplayName || '')}`}
+                                                className="flex items-start gap-3 min-w-0 flex-1 hover:opacity-80 transition-opacity"
+                                            >
                                                 <div className="flex size-10 items-center justify-center rounded-lg bg-primary/10 flex-shrink-0">
                                                     <Mic className="size-5 text-primary" />
                                                 </div>
@@ -189,23 +217,32 @@ export default function MeetingsPage() {
                                                         {formatDate(meeting.uploadTime)} · {formatTime(meeting.uploadTime)}
                                                     </CardDescription>
                                                 </div>
-                                            </div>
+                                            </Link>
                                             <DropdownMenu>
                                                 <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                                                    <Button variant="ghost" size="icon" className="size-8 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+                                                    <Button variant="ghost" size="icon" className="size-8 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0 relative z-10">
                                                         <MoreVertical className="size-4" />
                                                     </Button>
                                                 </DropdownMenuTrigger>
                                                 <DropdownMenuContent align="end">
                                                     <DropdownMenuItem asChild>
-                                                        <Link href={`/projects/${encodeURIComponent(meeting.projectName)}`}>View Project</Link>
+                                                        <Link href={`/projects/detail?id=${encodeURIComponent(meeting.project_id || meeting.projectName)}`}>View Project</Link>
                                                     </DropdownMenuItem>
                                                     <DropdownMenuItem asChild>
-                                                        <Link href={`/meetings/${encodedDocName}?projectName=${encodeURIComponent(meeting.projectName)}&displayName=${encodeURIComponent(meeting.projectDisplayName || '')}`}>
+                                                        <Link href={`/meetings/detail?id=${encodedDocName}&projectName=${encodeURIComponent(meeting.project_id || meeting.projectName)}&displayName=${encodeURIComponent(meeting.projectDisplayName || '')}`}>
                                                             View Transcript
                                                         </Link>
                                                     </DropdownMenuItem>
-                                                    <DropdownMenuItem className="text-destructive">Delete</DropdownMenuItem>
+                                                    <DropdownMenuItem
+                                                        onClick={() => {
+                                                            setMeetingToDelete(meeting);
+                                                            setShowDeleteDialog(true);
+                                                        }}
+                                                        className="text-destructive"
+                                                    >
+                                                        <Trash2 className="size-4 mr-2" />
+                                                        Delete
+                                                    </DropdownMenuItem>
                                                 </DropdownMenuContent>
                                             </DropdownMenu>
                                         </div>
@@ -222,25 +259,60 @@ export default function MeetingsPage() {
                                             <div className="flex items-center gap-2">
                                                 {meeting.mimeType && (
                                                     <Badge variant="outline" className="text-xs">
-                                                        {meeting.mimeType.split('/')[1]?.toUpperCase() || 'FILE'}
+                                                        {formatMimeBadgeLabel(meeting.mimeType, meeting.file_type)}
                                                     </Badge>
                                                 )}
                                             </div>
                                             {statusInfo.badge}
                                         </div>
                                     </CardContent>
-                                    <Link 
-                                        href={`/meetings/${encodedDocName}?projectName=${encodeURIComponent(meeting.projectName)}&displayName=${encodeURIComponent(meeting.projectDisplayName || '')}`} 
-                                        className="absolute inset-0"
-                                    >
-                                        <span className="sr-only">View meeting</span>
-                                    </Link>
                                 </Card>
                             );
                         })}
                     </div>
                 )}
             </div>
+
+            {/* Delete Meeting Confirmation Dialog */}
+            <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Delete Meeting</DialogTitle>
+                        <DialogDescription>
+                            Are you sure you want to delete &quot;{meetingToDelete?.displayName}&quot;? This action cannot be undone.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter>
+                        <Button
+                            variant="outline"
+                            onClick={() => {
+                                setShowDeleteDialog(false);
+                                setMeetingToDelete(null);
+                            }}
+                            disabled={isDeleting}
+                        >
+                            Cancel
+                        </Button>
+                        <Button
+                            variant="destructive"
+                            onClick={handleDeleteMeeting}
+                            disabled={isDeleting}
+                        >
+                            {isDeleting ? (
+                                <>
+                                    <Loader2 className="size-4 mr-2 animate-spin" />
+                                    Deleting...
+                                </>
+                            ) : (
+                                <>
+                                    <Trash2 className="size-4 mr-2" />
+                                    Delete Meeting
+                                </>
+                            )}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </DashboardLayout>
     );
 }

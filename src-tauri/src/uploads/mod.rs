@@ -9,6 +9,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use uuid::Uuid;
 
+#[allow(dead_code)]
 const MAX_CHUNK_SIZE_BYTES: usize = 5 * 1024 * 1024; // 5MB
 const MAX_UPLOAD_SESSIONS: usize = 10;
 
@@ -17,6 +18,7 @@ pub struct UploadState {
     upload_dir: PathBuf,
 }
 
+#[allow(dead_code)]
 pub type UploadStateHandle = Arc<Mutex<UploadState>>;
 
 impl UploadState {
@@ -35,10 +37,19 @@ impl UploadState {
 
         let upload_id = Uuid::new_v4().to_string();
         let session = UploadSession::new(&upload_id, file_name, total_chunks, &self.upload_dir)?;
+        log::info!(
+            "[UploadState] create_session id={} file={} chunks={} dir={} active={}",
+            upload_id,
+            file_name,
+            total_chunks,
+            self.upload_dir.display(),
+            self.sessions.len() + 1
+        );
         self.sessions.insert(upload_id.clone(), session);
         Ok(upload_id)
     }
 
+    #[allow(dead_code)]
     pub fn get_session(&self, upload_id: &str) -> Option<&UploadSession> {
         self.sessions.get(upload_id)
     }
@@ -48,6 +59,23 @@ impl UploadState {
     }
 
     pub fn remove_session(&mut self, upload_id: &str) -> Option<UploadSession> {
+        log::info!(
+            "[UploadState] remove_session id={} remaining={}",
+            upload_id,
+            self.sessions.len().saturating_sub(1)
+        );
         self.sessions.remove(upload_id)
+    }
+
+    pub fn has_session(&self, upload_id: &str) -> bool {
+        self.sessions.contains_key(upload_id)
+    }
+
+    pub fn session_count(&self) -> usize {
+        self.sessions.len()
+    }
+
+    pub fn session_ids(&self) -> Vec<String> {
+        self.sessions.keys().cloned().collect()
     }
 }

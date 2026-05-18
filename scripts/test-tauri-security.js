@@ -8,11 +8,11 @@ const path = require('path');
 
 const TAURI_CONF = path.join(__dirname, '..', 'src-tauri', 'tauri.conf.json');
 const CAPABILITIES = path.join(__dirname, '..', 'src-tauri', 'capabilities', 'default.json');
+const FRONTEND_DIST = '../out'; // Tauri serves Next.js static export (output: "export" in next.config.ts)
 
 const DANGEROUS_PATTERNS = {
   'withGlobalTauri': [true, 'withGlobalTauri must be false'],
   'csp': [null, 'CSP must not be null'],
-  'frontendDist': ['../.next', 'frontendDist must not be .next (use ../out for static export)'],
 };
 
 const DANGEROUS_CAPABILITY_PATTERNS = [
@@ -42,8 +42,9 @@ function checkTauriConf() {
     }
   }
 
-  if (conf.build?.frontendDist && !conf.build.frontendDist.includes('out')) {
-    errors.push(`[${TAURI_CONF}] frontendDist should point to ../out for static export`);
+  // Tauri serves the Next.js static export from ../out (not .next)
+  if (conf.build?.frontendDist && conf.build.frontendDist !== FRONTEND_DIST) {
+    errors.push(`[${TAURI_CONF}] frontendDist should be ${FRONTEND_DIST} (current: ${conf.build.frontendDist})`);
   }
 
   return errors;

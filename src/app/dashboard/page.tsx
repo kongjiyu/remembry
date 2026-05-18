@@ -1,18 +1,20 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { apiFetch } from "@/lib/apiFetch";
+import { normalizeMeeting, buildProjectMap, type NormalizedMeeting } from "@/lib/meetingViews";
+import { UploadJobsBanner } from "@/components/ui/upload-jobs-banner";
+import Link from "next/link";
 import {
-    Mic, FileText, Clock, CheckCircle2, Upload,
-    TrendingUp, FolderKanban, Plus, MessageCircleQuestion,
+    Mic, FileText, CheckCircle2, Upload,
+    FolderKanban, Plus,
     Search, ArrowRight, Sparkles, Calendar
 } from "lucide-react";
-import Link from "next/link";
 
 interface Project {
     id: string;
@@ -39,40 +41,47 @@ interface Meeting {
 
 export default function DashboardPage() {
     const [projects, setProjects] = useState<Project[]>([]);
+    const [meetings, setMeetings] = useState<NormalizedMeeting[]>([]);
     const [loading, setLoading] = useState(true);
 
-    useEffect(() => {
-        fetchProjects();
-    }, []);
-
-    const fetchProjects = async () => {
+    const loadData = useCallback(async () => {
+        setLoading(true);
         try {
-            const response = await apiFetch('/api/projects');
-            if (response.ok) {
-                const data = await response.json();
-                setProjects(data.projects || []);
-            }
+            const [projectsRes, meetingsRes] = await Promise.all([
+                apiFetch('/api/projects'),
+                apiFetch('/api/meetings'),
+            ]);
+            const projectsJson = projectsRes.ok ? await projectsRes.json() : {};
+            const meetingsJson = meetingsRes.ok ? await meetingsRes.json() : {};
+            const projectsData = projectsJson.projects || [];
+            const rawMeetings: Record<string, unknown>[] = meetingsJson.meetings || [];
+            const projectMap = buildProjectMap(projectsData);
+            const normalizedMeetings = rawMeetings.map((m: Record<string, unknown>) => normalizeMeeting(m, projectMap));
+            setProjects(projectsData);
+            setMeetings(normalizedMeetings);
         } catch (error) {
-            console.error('Error fetching projects:', error);
+            console.error('Error fetching data:', error);
         } finally {
             setLoading(false);
         }
-    };
+    }, []);
 
-    const totalMeetings = projects.reduce((acc, p) => acc + (p.meeting_count || 0), 0);
+    useEffect(() => {
+        loadData();
+    }, [loadData]);
 
-    const recentMeetingsList = projects
-        .flatMap(project =>
-            (project.meetings || []).map((meeting: any) => ({
-                ...meeting,
-                projectId: project.id,
-                projectDisplayName: project.display_name
-            }))
-        )
-        .filter((meeting: any) => !meeting.display_name?.startsWith('project-'))
-        .sort((a: any, b: any) => {
-            const timeA = new Date(a.created_at || 0).getTime();
-            const timeB = new Date(b.created_at || 0).getTime();
+    const totalMeetings = meetings.length;
+
+    const projectMeetingCounts = new Map<string, number>();
+    for (const m of meetings) {
+        projectMeetingCounts.set(m.project_id, (projectMeetingCounts.get(m.project_id) || 0) + 1);
+    }
+
+    const recentMeetingsList = [...meetings]
+        .filter(m => !m.displayName.startsWith('project-'))
+        .sort((a, b) => {
+            const timeA = new Date(a.uploadTime || 0).getTime();
+            const timeB = new Date(b.uploadTime || 0).getTime();
             return timeB - timeA;
         })
         .slice(0, 5);
@@ -82,6 +91,11 @@ export default function DashboardPage() {
     return (
         <DashboardLayout breadcrumbs={[{ label: "Dashboard" }]} title="Overview">
             <div className="grid grid-cols-1 md:grid-cols-12 gap-6 pb-8">
+
+                {/* ACTIVE / FAILED UPLOAD JOBS */}
+                <div className="col-span-1 md:col-span-12">
+                    <UploadJobsBanner />
+                </div>
 
                 {/* HERO SECTION */}
                 <div className="col-span-1 md:col-span-8 flex flex-col gap-6">
@@ -102,7 +116,7 @@ export default function DashboardPage() {
                                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground size-5" />
                                 <Input
                                     className="pl-10 h-12 bg-background/50 backdrop-blur-sm border-primary/20 focus-visible:ring-primary/30 text-base shadow-sm rounded-xl"
-                                    placeholder="Ask Remembry: 'What did we decide about the roadmap?'"
+                                    placeholder="Ask Remembry: &quot;What did we decide about the roadmap?&quot;"
                                 />
                                 <div className="absolute right-2 top-1/2 -translate-y-1/2">
                                     <Button size="sm" variant="ghost" className="h-8 w-8 p-0 rounded-lg">
@@ -136,7 +150,7 @@ export default function DashboardPage() {
                              ))
                         ) : recentProjectsList.length > 0 ? (
                             recentProjectsList.map((project) => (
-                                <Link key={project.id} href={`/projects/${encodeURIComponent(project.id)}`}>
+                                <Link key={project.id} href={`/projects/detail?id=${encodeURIComponent(project.id)}`}>
                                     <Card className="h-full hover:bg-muted/50 transition-all duration-300 hover:scale-[1.02] border border-border/50 shadow-sm bg-card/50 backdrop-blur-sm cursor-pointer group">
                                         <CardContent className="p-5 flex flex-col justify-between h-full">
                                             <div className="flex justify-between items-start">
@@ -144,7 +158,7 @@ export default function DashboardPage() {
                                                     <FolderKanban className="size-5" />
                                                 </div>
                                                 <Badge variant="secondary" className="bg-background/80 backdrop-blur-md">
-                                                    {project.meeting_count || 0}
+                                                    {projectMeetingCounts.get(project.id) || 0}
                                                 </Badge>
                                             </div>
                                             <div>
@@ -221,15 +235,6 @@ export default function DashboardPage() {
                                     <div className="text-xs text-muted-foreground">Active Projects</div>
                                 </div>
                             </div>
-                            <div className="flex items-center gap-4">
-                                <div className="size-10 rounded-full bg-emerald-500/10 flex items-center justify-center text-emerald-500 flex-shrink-0">
-                                    <Clock className="size-5" />
-                                </div>
-                                <div className="min-w-0">
-                                    <div className="text-2xl font-bold">12h</div>
-                                    <div className="text-xs text-muted-foreground">Time Saved</div>
-                                </div>
-                            </div>
                         </CardContent>
                     </Card>
                 </div>
@@ -258,10 +263,10 @@ export default function DashboardPage() {
                                         </div>
                                     </div>
                                 ) : (
-                                    recentMeetingsList.map((meeting: any) => (
+                                    recentMeetingsList.map((meeting) => (
                                         <Link
                                             key={meeting.id}
-                                            href={`/meetings/${encodeURIComponent(meeting.id)}?projectName=${encodeURIComponent(meeting.projectId)}&displayName=${encodeURIComponent(meeting.projectDisplayName || '')}`}
+                                            href={`/meetings/detail?id=${encodeURIComponent(meeting.id)}&projectName=${encodeURIComponent(meeting.project_id)}&displayName=${encodeURIComponent(meeting.projectDisplayName || '')}`}
                                             className="group flex items-center justify-between p-4 rounded-xl hover:bg-muted/50 transition-all duration-200 border border-transparent hover:border-border/50 min-w-0"
                                         >
                                             <div className="flex items-center gap-4 min-w-0 flex-1">
@@ -270,12 +275,12 @@ export default function DashboardPage() {
                                                 </div>
                                                 <div className="flex-1 min-w-0">
                                                     <h4 className="font-medium group-hover:text-primary transition-colors break-words">
-                                                        {meeting.display_name || meeting.title}
+                                                        {meeting.displayName}
                                                     </h4>
                                                     <div className="flex items-center gap-2 text-xs text-muted-foreground">
                                                         <span className="flex items-center gap-1 flex-shrink-0">
                                                             <Calendar className="size-3" />
-                                                            {meeting.created_at ? new Date(meeting.created_at).toLocaleDateString() : 'Unknown'}
+                                                            {meeting.uploadTime ? new Date(meeting.uploadTime).toLocaleDateString() : 'Unknown'}
                                                         </span>
                                                         <span className="flex-shrink-0">•</span>
                                                         <span className="break-words min-w-0">{meeting.projectDisplayName}</span>

@@ -10,10 +10,12 @@ import { Textarea } from "@/components/ui/textarea";
 import { AudioRecorder } from "@/components/ui/audio-recorder";
 import { Upload, Mic, FileAudio, FileText, X, Loader2, FolderKanban, Plus, Download } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { normalizeMeeting, countMeetingsByProject } from "@/lib/meetingViews";
 import {
     DropdownMenu,
     DropdownMenuContent,
     DropdownMenuItem,
+    DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { apiFetch } from "@/lib/apiFetch";
@@ -32,11 +34,36 @@ import {
 interface Project {
     id: string;
     display_name: string;
+    name?: string;
+    displayName?: string;
     color: string;
     description: string;
     goals: string;
     created_at: string;
-    meeting_count?: number;
+    meeting_count: number;
+}
+
+/**
+ * Normalizes raw project from either Tauri or web API and attaches meeting_count.
+ * Priority: computed from meetings > meeting_count field > meetingCount field > 0
+ */
+function normalizeProjectWithCount(
+    raw: Record<string, unknown>,
+    computedCounts: Map<string, number>
+): Project {
+    const id = String(raw.id || raw.name || '');
+    const displayName = String(raw.display_name || raw.displayName || raw.name || '');
+    return {
+        id,
+        display_name: displayName,
+        name: String(raw.name || ''),
+        displayName: String(raw.displayName || ''),
+        color: String(raw.color || '#000000'),
+        description: String(raw.description || ''),
+        goals: String(raw.goals || ''),
+        created_at: String(raw.created_at || raw.uploadTime || new Date().toISOString()),
+        meeting_count: computedCounts.get(id) || (raw.meeting_count as number) || (raw.meetingCount as number) || 0,
+    };
 }
 
 type InputMode = "upload" | "record";
@@ -49,6 +76,7 @@ interface UploadedFile {
     duration?: number;
     url?: string;
     fileType: FileType;
+    mimeType?: string;
 }
 
 function formatFileSize(bytes: number): string {
@@ -57,6 +85,18 @@ function formatFileSize(bytes: number): string {
     const sizes = ["Bytes", "KB", "MB", "GB"];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
+}
+
+async function blobToBase64(blob: Blob): Promise<string> {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+            const result = reader.result as string;
+            resolve(result.substring(result.indexOf(',') + 1));
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+    });
 }
 
 function formatDuration(seconds: number): string {
@@ -85,7 +125,6 @@ export default function NewMeetingPage() {
     const router = useRouter();
     const [inputMode, setInputMode] = useState<InputMode>("upload");
     const [uploadedFile, setUploadedFile] = useState<UploadedFile | null>(null);
-    const [isPlaying, setIsPlaying] = useState(false);
     const [isDragging, setIsDragging] = useState(false);
     const [isProcessing, setIsProcessing] = useState(false);
     const [processingStatus, setProcessingStatus] = useState<string>("");
@@ -98,13 +137,19 @@ export default function NewMeetingPage() {
     const [projects, setProjects] = useState<Project[]>([]);
     const [selectedProject, setSelectedProject] = useState<Project | null>(null);
     const [loadingProjects, setLoadingProjects] = useState(true);
-    const [shouldAutoSubmit, setShouldAutoSubmit] = useState(false);
     // Track if this was triggered by quick-record URL (only auto-start from URL, not tab click)
     const [isQuickRecordEntry, setIsQuickRecordEntry] = useState(false);
     // Confirmation dialog state for unsaved recording
     const [showDiscardDialog, setShowDiscardDialog] = useState(false);
     const [pendingMode, setPendingMode] = useState<InputMode | null>(null);
     const [hasUnsavedRecording, setHasUnsavedRecording] = useState(false);
+
+    // Create project dialog
+    const [showCreateProjectDialog, setShowCreateProjectDialog] = useState(false);
+    const [newProjectName, setNewProjectName] = useState("");
+    const [newProjectDescription, setNewProjectDescription] = useState("");
+    const [newProjectGoals, setNewProjectGoals] = useState("");
+    const [isCreatingProject, setIsCreatingProject] = useState(false);
 
     // Stabilized callbacks for ModeParamHandler to prevent re-forcing record mode
     const handleModeChange = useCallback((mode: InputMode) => {
@@ -128,36 +173,45 @@ export default function NewMeetingPage() {
     }, [inputMode, hasUnsavedRecording]);
 
     useEffect(() => {
-        const fetchProjects = async () => {
+        const fetchData = async () => {
+            setLoadingProjects(true);
             try {
-                const response = await apiFetch('/api/projects');
-                if (response.ok) {
-                    const data = await response.json();
-                    setProjects(data.projects || []);
-                    if (data.projects.length > 0) {
-                        setSelectedProject(data.projects[0]);
-                    }
+                const [projectsRes, meetingsRes] = await Promise.all([
+                    apiFetch('/api/projects'),
+                    apiFetch('/api/meetings'),
+                ]);
+
+                const projectsJson = projectsRes.ok ? await projectsRes.json() : {};
+                const meetingsJson = meetingsRes.ok ? await meetingsRes.json() : {};
+                const projectsData = projectsJson.projects || [];
+                const rawMeetings: Record<string, unknown>[] = meetingsJson.meetings || [];
+
+                // Build project map for normalizeMeeting
+                const projectMap = new Map<string, string>();
+                for (const p of projectsData) {
+                    const pid = String(p.id || p.name || '');
+                    projectMap.set(pid, String(p.display_name || p.displayName || p.name || pid));
+                }
+
+                const normalizedMeetings = rawMeetings.map((m: Record<string, unknown>) => normalizeMeeting(m, projectMap));
+                const computedCounts = countMeetingsByProject(normalizedMeetings);
+
+                const normalized = projectsData.map((p: Record<string, unknown>) => normalizeProjectWithCount(p, computedCounts));
+                setProjects(normalized);
+                if (normalized.length > 0) {
+                    setSelectedProject(normalized[0]);
                 }
             } catch (error) {
-                console.error('Error fetching projects:', error);
+                console.error('Error fetching data:', error);
             } finally {
                 setLoadingProjects(false);
             }
         };
 
-        fetchProjects();
+        fetchData();
     }, []);
 
-    // Auto-submit effect for recordings
-    useEffect(() => {
-        if (shouldAutoSubmit && uploadedFile && selectedProject) {
-            handleSubmit();
-            setShouldAutoSubmit(false);
-        }
-    }, [shouldAutoSubmit, uploadedFile, selectedProject]);
-
     const acceptedAudioFormats = ["audio/mp3", "audio/mpeg", "audio/wav", "audio/x-wav", "audio/m4a", "audio/x-m4a", "audio/webm", "audio/ogg", "video/webm", "audio/mp4", "video/mp4"];
-    const acceptedTextFormats = ["text/plain"];
 
     const handleFileSelect = async (file: File) => {
         // Check if it's a text file
@@ -167,6 +221,7 @@ export default function NewMeetingPage() {
                 name: file.name,
                 size: file.size,
                 fileType: "text",
+                mimeType: file.type || undefined,
             });
             return;
         }
@@ -190,6 +245,7 @@ export default function NewMeetingPage() {
                 duration: duration,
                 url,
                 fileType: "audio",
+                mimeType: file.type || undefined,
             });
         });
     };
@@ -226,8 +282,8 @@ export default function NewMeetingPage() {
             duration,
             url,
             fileType: "audio",
+            mimeType: blob.type || "audio/webm",
         });
-        setShouldAutoSubmit(true);
     };
 
     const handleRemoveFile = () => {
@@ -235,7 +291,50 @@ export default function NewMeetingPage() {
             URL.revokeObjectURL(uploadedFile.url);
         }
         setUploadedFile(null);
-        setShouldAutoSubmit(false);
+    };
+
+    const handleCreateProject = async () => {
+        if (!newProjectName.trim()) return;
+        setIsCreatingProject(true);
+        try {
+            const response = await apiFetch('/api/projects', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    name: newProjectName.trim(),
+                    description: newProjectDescription.trim(),
+                    goals: newProjectGoals.trim(),
+                }),
+            });
+            if (!response.ok) throw new Error('Failed to create project');
+            const data = await response.json();
+
+            // Normalize project shape for both Tauri (id, display_name) and web (name, displayName)
+            const newProject: Project = {
+                id: data.project?.id || data.id || data.name || '',
+                display_name: data.project?.display_name || data.display_name || data.displayName || newProjectName.trim(),
+                name: data.project?.name || data.name || '',
+                displayName: data.project?.displayName || data.displayName || '',
+                color: data.project?.color || data.color || '#000000',
+                description: data.project?.description || data.description || '',
+                goals: data.project?.goals || data.goals || '',
+                created_at: data.project?.created_at || data.created_at || new Date().toISOString(),
+                meeting_count: 0,
+            };
+
+            setProjects(prev => [...prev, newProject]);
+            setSelectedProject(newProject);
+            setShowCreateProjectDialog(false);
+            setNewProjectName("");
+            setNewProjectDescription("");
+            setNewProjectGoals("");
+            toast.success("Project created");
+        } catch (error) {
+            console.error('Error creating project:', error);
+            toast.error(error instanceof Error ? error.message : 'Failed to create project');
+        } finally {
+            setIsCreatingProject(false);
+        }
     };
 
     const handleSubmit = useCallback(async () => {
@@ -246,6 +345,9 @@ export default function NewMeetingPage() {
 
         setIsProcessing(true);
         setProcessingStatus("Preparing file...");
+
+        let uploadId: string | null = null;
+        let enqueued = false;
 
         try {
             // Check if Gemini API key is configured first
@@ -259,7 +361,6 @@ export default function NewMeetingPage() {
             const CHUNK_SIZE = 5 * 1024 * 1024; // 5MB
             const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
             const fileName = title || uploadedFile.name;
-            const mimeType = file.type || (uploadedFile.fileType === 'text' ? 'text/plain' : 'audio/mpeg');
 
             setProcessingStatus("Starting upload...");
 
@@ -273,19 +374,17 @@ export default function NewMeetingPage() {
                 throw new Error('Failed to start upload');
             }
 
-            const uploadId = startResult.upload_id;
+            uploadId = startResult.upload_id;
 
-            setProcessingStatus(`Uploading ${totalChunks} chunk(s)...`);
+            setProcessingStatus(`Uploading 1/${totalChunks}...`);
 
-            // Upload chunks
-            const arrayBuffer = await file.arrayBuffer();
+            // Upload chunks one by one, yielding between chunks to keep UI responsive
             for (let i = 0; i < totalChunks; i++) {
                 const start = i * CHUNK_SIZE;
                 const end = Math.min(start + CHUNK_SIZE, file.size);
-                const chunk = arrayBuffer.slice(start, end);
-                const base64Chunk = btoa(
-                    new Uint8Array(chunk).reduce((data, byte) => data + String.fromCharCode(byte), '')
-                );
+                const chunkBlob = file.slice(start, end);
+
+                const base64Chunk = await blobToBase64(chunkBlob);
 
                 const chunkResult = await invoke<{ success: boolean }>('append_upload_chunk', {
                     uploadId,
@@ -294,22 +393,19 @@ export default function NewMeetingPage() {
                 });
 
                 if (!chunkResult.success) {
-                    await invoke('cancel_upload', { uploadId });
                     throw new Error('Failed to upload chunk');
                 }
 
-                setProcessingStatus(`Uploading chunk ${i + 1} of ${totalChunks}...`);
+                setProcessingStatus(`Uploading ${i + 1}/${totalChunks}...`);
+
+                // Yield to the event loop between chunks so React/Tauri can repaint
+                await new Promise(resolve => setTimeout(resolve, 0));
             }
 
-            setProcessingStatus("Processing meeting...");
+            setProcessingStatus("Queuing...");
 
-            // Process the upload using invoke directly
-            const processResult = await invoke<{
-                success: boolean;
-                meeting_id: string;
-                meeting: unknown;
-                message: string;
-            }>('process_meeting_upload', {
+            // Enqueue background processing instead of blocking
+            await invoke<{ job_id: string }>('enqueue_meeting_upload_processing', {
                 uploadId,
                 params: {
                     project_id: selectedProject.id,
@@ -317,41 +413,32 @@ export default function NewMeetingPage() {
                     context: notes || null,
                     file_type: uploadedFile.fileType,
                     notes_languages: ["en"],
+                    mime_type: uploadedFile.mimeType || null,
                 },
             });
+            enqueued = true;
 
-            if (!processResult.success) {
-                throw new Error(processResult.message || 'Failed to process meeting');
-            }
+            toast.success("Upload queued. Processing in background.");
 
-            console.log('Meeting uploaded successfully:', processResult);
-
-            toast.success("Meeting uploaded successfully!");
-
-            if (processResult.meeting_id) {
-                const queryParams = new URLSearchParams({
-                    projectName: selectedProject.id,
-                    display_name: selectedProject.display_name
-                });
-                router.push(`/meetings/${processResult.meeting_id}?${queryParams.toString()}`);
-            } else {
-                router.push('/meetings');
-            }
+            // Redirect to meetings page immediately without waiting for transcription
+            router.push('/meetings');
         } catch (error) {
             console.error('Error uploading meeting:', error);
+
+            // Clean up upload session if enqueue hasn't completed yet
+            if (uploadId && !enqueued) {
+                try {
+                    await invoke('cancel_upload', { uploadId });
+                } catch {
+                    // Swallow cleanup errors to preserve the original error
+                }
+            }
+
             toast.error(error instanceof Error ? error.message : 'Failed to upload meeting');
         } finally {
             setIsProcessing(false);
         }
     }, [uploadedFile, selectedProject, title, notes, router]);
-
-    // Auto-submit effect for recordings
-    useEffect(() => {
-        if (shouldAutoSubmit && uploadedFile && selectedProject) {
-            handleSubmit();
-            setShouldAutoSubmit(false);
-        }
-    }, [shouldAutoSubmit, uploadedFile, selectedProject, handleSubmit]);
 
     // Only auto-start when coming from quick-record URL, not from manual tab switch
     const shouldAutoStart = inputMode === "record" && isQuickRecordEntry;
@@ -451,9 +538,6 @@ export default function NewMeetingPage() {
                                         src={uploadedFile.url}
                                         controls
                                         className="w-full mt-4 rounded"
-                                        onPlay={() => setIsPlaying(true)}
-                                        onPause={() => setIsPlaying(false)}
-                                        onEnded={() => setIsPlaying(false)}
                                     />
                                 )}
                             </div>
@@ -514,27 +598,41 @@ export default function NewMeetingPage() {
                             <label className="text-sm font-medium">
                                 Project <span className="text-destructive">*</span>
                             </label>
-                            <div className="flex gap-2">
-                                <DropdownMenu>
-                                    <DropdownMenuTrigger asChild>
-                                        <Button variant="outline" className="flex-1 justify-between overflow-hidden min-w-0">
-                                            {selectedProject ? (
-                                                <span className="flex items-center gap-2 truncate">
-                                                    <FolderKanban className="size-4 shrink-0" />
-                                                        <span className="truncate">{selectedProject.display_name}</span>
-                                                </span>
-                                            ) : (
-                                                <span className="text-muted-foreground">Select a project</span>
-                                            )}
-                                        </Button>
-                                    </DropdownMenuTrigger>
-                                    <DropdownMenuContent align="start" className="w-[400px]">
+                            <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                    <Button variant="outline" className="w-full justify-between overflow-hidden min-w-0">
                                         {loadingProjects ? (
-                                            <div className="p-2 text-sm text-muted-foreground">Loading projects...</div>
-                                        ) : projects.length === 0 ? (
-                                            <div className="p-2 text-sm text-muted-foreground">No projects available</div>
+                                            <span className="flex items-center gap-2 text-muted-foreground">
+                                                <Loader2 className="size-4 animate-spin" />
+                                                Loading projects...
+                                            </span>
+                                        ) : selectedProject ? (
+                                            <span className="flex items-center gap-2 truncate">
+                                                <FolderKanban className="size-4 shrink-0" />
+                                                <span className="truncate">{selectedProject.display_name}</span>
+                                            </span>
                                         ) : (
-                                            projects.map((project) => (
+                                            <span className="text-muted-foreground">Select a project</span>
+                                        )}
+                                    </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="start" className="w-[400px]">
+                                    {loadingProjects ? (
+                                        <div className="p-3 text-sm text-muted-foreground flex items-center gap-2">
+                                            <Loader2 className="size-4 animate-spin" />
+                                            Loading projects...
+                                        </div>
+                                    ) : projects.length === 0 ? (
+                                        <DropdownMenuItem
+                                            onClick={() => setShowCreateProjectDialog(true)}
+                                            className="flex items-center gap-2 cursor-pointer"
+                                        >
+                                            <Plus className="size-4" />
+                                            Create first project
+                                        </DropdownMenuItem>
+                                    ) : (
+                                        <>
+                                            {projects.map((project) => (
                                                 <DropdownMenuItem
                                                     key={project.id}
                                                     onClick={() => setSelectedProject(project)}
@@ -546,18 +644,21 @@ export default function NewMeetingPage() {
                                                         {project.meeting_count || 0} meetings
                                                     </span>
                                                 </DropdownMenuItem>
-                                            ))
-                                        )}
-                                    </DropdownMenuContent>
-                                </DropdownMenu>
-                                <Button variant="outline" size="icon" asChild>
-                                    <Link href="/projects/new">
-                                        <Plus className="size-4" />
-                                    </Link>
-                                </Button>
-                            </div>
+                                            ))}
+                                            <DropdownMenuSeparator />
+                                            <DropdownMenuItem
+                                                onClick={() => setShowCreateProjectDialog(true)}
+                                                className="flex items-center gap-2 cursor-pointer"
+                                            >
+                                                <Plus className="size-4" />
+                                                Create new project
+                                            </DropdownMenuItem>
+                                        </>
+                                    )}
+                                </DropdownMenuContent>
+                            </DropdownMenu>
                             <p className="text-xs text-muted-foreground">
-                                Select an existing project or create a new one
+                                Choose where this meeting belongs.
                             </p>
                         </div>
 
@@ -601,7 +702,7 @@ export default function NewMeetingPage() {
                         {isProcessing ? (
                             <>
                                 <Loader2 className="size-4 animate-spin" />
-                                Uploading...
+                                {processingStatus || "Processing..."}
                             </>
                         ) : (
                             <>
@@ -642,6 +743,75 @@ export default function NewMeetingPage() {
                         </DialogFooter>
                     </DialogContent>
                 </Dialog>
+
+                <Dialog open={showCreateProjectDialog} onOpenChange={setShowCreateProjectDialog}>
+                    <DialogContent>
+                        <DialogHeader>
+                            <DialogTitle>Create new project</DialogTitle>
+                            <DialogDescription>
+                                Add a project to organize this meeting.
+                            </DialogDescription>
+                        </DialogHeader>
+                        <div className="space-y-4 py-2">
+                            <div className="space-y-2">
+                                <label htmlFor="project-name" className="text-sm font-medium">Project name</label>
+                                <Input
+                                    id="project-name"
+                                    placeholder="e.g., Team Meetings"
+                                    value={newProjectName}
+                                    onChange={(e) => setNewProjectName(e.target.value)}
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <label htmlFor="project-description" className="text-sm font-medium">Description</label>
+                                <Textarea
+                                    id="project-description"
+                                    placeholder="What is this project for?"
+                                    value={newProjectDescription}
+                                    onChange={(e) => setNewProjectDescription(e.target.value)}
+                                    rows={2}
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <label htmlFor="project-goals" className="text-sm font-medium">Goals</label>
+                                <Textarea
+                                    id="project-goals"
+                                    placeholder="What do you want to achieve?"
+                                    value={newProjectGoals}
+                                    onChange={(e) => setNewProjectGoals(e.target.value)}
+                                    rows={2}
+                                />
+                            </div>
+                        </div>
+                        <DialogFooter>
+                            <Button
+                                variant="outline"
+                                onClick={() => {
+                                    setShowCreateProjectDialog(false);
+                                    setNewProjectName("");
+                                    setNewProjectDescription("");
+                                    setNewProjectGoals("");
+                                }}
+                            >
+                                Cancel
+                            </Button>
+                            <Button
+                                onClick={handleCreateProject}
+                                disabled={!newProjectName.trim() || isCreatingProject}
+                            >
+                                {isCreatingProject ? (
+                                    <>
+                                        <Loader2 className="size-4 mr-2 animate-spin" />
+                                        Creating...
+                                    </>
+                                ) : (
+                                    "Create project"
+                                )}
+                            </Button>
+                        </DialogFooter>
+                    </DialogContent>
+                </Dialog>
+
             </div>
         </DashboardLayout>
     );

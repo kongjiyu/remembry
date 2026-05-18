@@ -4,100 +4,109 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**Remembry** is an AI-powered meeting notes application that transforms audio recordings into structured, searchable notes. Built with Next.js 16 (App Router), it uses Gemini AI for transcription and extraction, and Supabase for storage and semantic search.
+**Remembry** is an AI-powered desktop application that transforms audio recordings into structured, searchable notes. Built with Tauri (Rust backend) and Next.js 16 (React frontend), it uses Gemini AI for transcription and extraction, and SQLite for local storage.
 
 ## Tech Stack
 
+- **Desktop Runtime**: Tauri 2.x (Rust backend + WebView frontend)
 - **Frontend**: Next.js 16, React 19, Tailwind CSS v4, shadcn/ui (Radix UI)
-- **AI**: Google Gemini 3 Flash (`gemini-3-flash-preview`) via `@google/genai`
-- **Database**: Supabase (PostgreSQL with RLS)
+- **AI**: Google Gemini 3 Flash (`gemini-3-flash-preview`) via `@google/genai` (Rust)
+- **Database**: SQLite via `rusqlite` (local storage, no cloud)
 - **Styling**: Tailwind CSS + CSS variables (no `tailwind.config.js` - configured via CSS)
 
 ## Commands
 
 ```bash
-npm run dev      # Start development server
-npm run build    # Build for production
-npm run start    # Start production server
-npm run lint      # Run ESLint
+npm run tauri:dev    # Start Tauri development app
+npm run tauri:build  # Build desktop bundle (MSI/NSIS)
+npm run build:tauri   # Build Next.js static frontend (TAURI_STATIC_EXPORT=1)
+npm run lint         # Run ESLint
+npm run test:run     # Run unit tests
 ```
 
 ## Architecture
 
-### AI Processing Pipeline (`src/lib/gemini.ts`)
+### Tauri Commands (Rust Backend)
 
-All AI operations use the same `TRANSCRIPTION_MODEL = "gemini-3-flash-preview"`:
-- **Transcription**: `transcribeAudio()` - uploads audio to Gemini Files API, polls for processing, then transcribes
-- **Notes Extraction**: `extractMeetingNotes()` - generates structured JSON with summary, action items, decisions, Q&A
-- **Retry Logic**: Both functions use `retryWithBackoff()` with exponential backoff for rate limits (429), network errors, and 500s
+All data operations go through Tauri commands registered in `src-tauri/src/`:
 
-### File Search / RAG (`src/lib/fileSearch.ts`)
+| Command | Description |
+|---------|-------------|
+| `list_projects` | List all projects |
+| `create_project` | Create a new project |
+| `delete_project` | Delete a project |
+| `list_meetings` | List meetings (optional `project_id` filter) |
+| `get_meeting` | Get meeting details |
+| `get_meeting_metadata` | Get meeting metadata |
+| `get_meeting_notes` | Get extracted notes for a language |
+| `extract_meeting_notes` | Trigger note extraction |
+| `regenerate_meeting_notes` | Regenerate notes with different language |
+| `get_gemini_key_status` | Check if Gemini API key is configured |
+| `save_gemini_key` | Save Gemini API key |
+| `delete_gemini_key` | Delete Gemini API key |
+| `upload_audio` | Upload audio file and start processing |
 
-Uses Supabase as a document store with simple keyword-based retrieval (not vector search):
-- `retrieveChunks()` - tokenizes query, scores document chunks by term frequency, returns top 12 matches
-- `fileSearch()` - retrieves chunks then uses Gemini to synthesize an answer from context
-- `listAllRagStores()` / `listAllProjects()` - list available projects/stores
-- Project IDs use format `project_{uuid}`; document IDs use format `documents/{uuid}`
+### API Fetch Layer (`src/lib/apiFetch.ts`)
 
-### Supabase Client (`src/lib/supabase.ts`)
+All frontend code uses `apiFetch('/api/...')` which maps to Tauri commands:
 
-Server-side only. Uses `SUPABASE_SERVICE_ROLE_KEY` for API routes. Tables: `projects`, `project_documents`, `meetings`, `user_gemini_keys`.
+- Routes like `/api/meetings/:id` map to corresponding Tauri commands
+- Non-Tauri environment: throws clear error `This build requires the Tauri desktop runtime.`
+- Keeps existing UI code unchanged — no need to refactor page components
 
-### API Routes Pattern
+### AI Processing Pipeline (Rust)
 
-API routes in `src/app/api/` follow Next.js App Router conventions. Key patterns:
-- User API keys stored in `user_gemini_keys` table, fetched per-request via `src/lib/userKey.ts`
-- File uploads saved to `/uploads` directory temporarily, then processed
-- Meeting audio files are NOT stored - transcription JSON is stored in `meetings.notes_by_language`
+The Gemini AI processing lives in `src-tauri/src/gemini.rs`:
+- **Transcription**: uploads audio to Gemini Files API, polls, then transcribes
+- **Notes Extraction**: generates structured JSON with summary, action items, decisions, Q&A
+- **Retry Logic**: exponential backoff for rate limits (429), network errors, 500s
 
-### Meetings Flow
+### Data Storage (SQLite)
 
-1. Upload audio → `POST /api/meetings/upload` - saves file, starts transcription
-2. Analyze/Extract → `POST /api/meetings/analyze` - runs transcription + extraction
-3. View Notes → `GET /api/meetings/[id]/extract` - retrieves extracted notes
-4. Regenerate → `POST /api/meetings/[id]/regenerate-notes` - re-runs extraction with different language
+Local SQLite database stored in app data directory:
+- `projects` table: id, display_name, color, created_at
+- `meetings` table: id, project_id, title, context, file_name, transcription (JSON), notes_by_language (JSON), default_language
+- `user_gemini_keys` table: user_id, gemini_api_key, usage stats
 
-### Search System
+### Pages / Routing
 
-Multi-store search (`src/app/api/search/multi-store/route.ts`):
-- Queries multiple projects in parallel using `Promise.all`
-- Per-store timeout (default 30s) prevents slow stores from blocking
-- Aggregates results then synthesizes via Gemini
+UI routes are standard Next.js App Router pages. Dynamic entity pages use query parameters (`?id=...`) to support Next.js static export in Tauri:
+
+- `/dashboard` — Main dashboard with project cards and quick actions
+- `/meetings` — List all meetings, filter by project
+- `/meetings/new` — Create new meeting (upload or record)
+- `/meetings/detail?id=...` — Meeting detail with transcript/notes tabs
+- `/meetings/extract?id=...` — Extract notes view
+- `/projects` — Project management
+- `/projects/detail?id=...` — Project detail
+- `/settings` — Gemini API key configuration
 
 ## Local Development
 
-### Supabase CLI Setup
+### First Run
 
 ```bash
-# Install Supabase CLI
-npm install -g supabase
+# Install dependencies
+npm install
 
-# Start local Supabase
-supabase start
-
-# Get keys with: supabase status
-# Default: http://127.0.0.1:54321
-
-# Run migrations
-psql -h 127.0.0.1 -p 54322 -U postgres -d postgres -f supabase/migrations/001_initial_schema.sql
+# Start Tauri development app
+npm run tauri:dev
 ```
 
-### Environment Variables
+The app will open in a desktop window. On first run, go to **Settings** to enter your Gemini API key.
 
-```env
-SUPABASE_URL=http://127.0.0.1:54321        # Local Supabase
-SUPABASE_SERVICE_ROLE_KEY=<your-key>       # From `supabase status`
-GEMINI_API_KEY=                            # Optional server-side fallback
+### Gemini API Key
+
+Users save their personal Gemini API key via `/settings` page (stored in SQLite `user_gemini_keys` table). Get a free key at [Google AI Studio](https://aistudio.google.com/app/apikey).
+
+### Build for Production
+
+```bash
+# Build Next.js static frontend
+npm run build:tauri
+
+# Build Tauri desktop bundle
+npm run tauri:build
 ```
 
-Users save their personal Gemini API key via `/settings` page (stored in `user_gemini_keys` table).
-
-## Database Schema
-
-Core tables:
-- `projects` - id, display_name, color, created_at
-- `project_documents` - id, project_id, display_name, mime_type, content, metadata, created_at
-- `meetings` - id, project_id, title, context, file_name, transcription (JSONB), notes_by_language (JSONB), default_language
-- `user_gemini_keys` - user_id, gemini_api_key
-
-Supabase RLS is enabled. Permissive policies are set to `using (true) with check (true)` for development.
+Desktop bundles (MSI/NSIS on Windows) will be in `src-tauri/target/release/bundle/`.

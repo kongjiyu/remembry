@@ -1,6 +1,0 @@
-# Supabase Local Development Configuration
-# Project: Remembry
-
-[project]
-id = "remembry-local"
-name = "remembry"

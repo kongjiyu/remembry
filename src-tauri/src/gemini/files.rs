@@ -22,6 +22,7 @@ pub struct UploadedFileInfo {
 pub struct UploadResult {
     pub uri: String,
     pub name: String,
+    #[allow(dead_code)]
     pub state: String,
 }
 
@@ -35,6 +36,7 @@ pub struct FileInfo {
     pub name: String,
     pub uri: Option<String>,
     pub state: String,
+    #[allow(dead_code)]
     #[serde(default)]
     pub mime_type: Option<String>,
 }

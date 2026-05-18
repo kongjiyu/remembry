@@ -70,5 +70,5 @@ pub fn is_retryable_error(status: reqwest::StatusCode) -> bool {
         || status.as_u16() >= 500
 }
 
-pub use files::{upload_file, poll_file_status, delete_file};
+pub use files::{upload_file, delete_file};
 pub use generate::{transcribe_audio, extract_meeting_notes};

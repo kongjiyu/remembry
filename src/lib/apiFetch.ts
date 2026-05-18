@@ -1,16 +1,4 @@
 import { invoke } from "@tauri-apps/api/core";
-import { buildUserHeaders } from "./clientUser";
-
-function isApiUrl(url: string): boolean {
-  return typeof url === "string" && url.startsWith("/api/");
-}
-
-function isTauri(): boolean {
-  const tauriGlobal = globalThis as typeof globalThis & {
-    __TAURI_INTERNALS__?: { invoke?: unknown };
-  };
-  return typeof tauriGlobal.__TAURI_INTERNALS__?.invoke === "function";
-}
 
 function extractPath(url: string): string {
   try {
@@ -75,6 +63,7 @@ const TAURI_COMMANDS: TauriCommandEntry[] = [
     return params;
   }},
   { pattern: "/api/meetings/:id", method: "GET", command: "get_meeting", extractParams: (p) => ({ meetingId: matchRoute("/api/meetings/:id", p)?.id || "" }) },
+  { pattern: "/api/meetings/:id", method: "DELETE", command: "delete_meeting", extractParams: (p) => ({ meetingId: matchRoute("/api/meetings/:id", p)?.id || "" }) },
   { pattern: "/api/meetings/:id/metadata", method: "GET", command: "get_meeting_metadata", extractParams: (p) => ({ meetingId: matchRoute("/api/meetings/:id/metadata", p)?.id || "" }) },
   { pattern: "/api/meetings/:id/extract", method: "GET", command: "get_meeting_notes", extractParams: (p, q) => {
     const m = matchRoute("/api/meetings/:id/extract", p);
@@ -135,18 +124,7 @@ async function tauriRoute(url: string, method: string, init?: RequestInit): Prom
     }
   }
 
-  return callWebApi(path, method, init);
-}
-
-async function callWebApi(path: string, method: string, init?: RequestInit): Promise<ApiResponse> {
-  const url = `/api${path.startsWith("/api") ? path.substring(4) : path}`;
-  const userHeaders = buildUserHeaders();
-  const existingHeaders = (init?.headers as Record<string, string>) || {};
-  const headers: Record<string, string> = {};
-  for (const [k, v] of Object.entries(userHeaders || {})) headers[k] = v as string;
-  for (const [k, v] of Object.entries(existingHeaders)) headers[k] = v;
-  const response = await fetch(url, { ...init, method, headers });
-  return new ApiResponse(response.ok, response.status, await response.json().catch(() => ({})));
+  return new ApiResponse(false, 404, { error: `No handler found for ${method} ${path}` });
 }
 
 export async function apiFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
@@ -161,18 +139,14 @@ export async function apiFetch(input: RequestInfo | URL, init?: RequestInit): Pr
     if (input.method && !finalInit.method) finalInit.method = input.method;
   }
 
-  if (isTauri() && isApiUrl(url)) {
-    const method = finalInit.method || "GET";
-    const response = await tauriRoute(url, method, finalInit);
-    return new Response(JSON.stringify(await response.json()), {
-      status: response.status,
-      headers: { "Content-Type": "application/json" },
-    });
+  if (!url.startsWith("/api/")) {
+    throw new Error("apiFetch is only for /api/ routes. This build requires the Tauri desktop runtime.");
   }
 
-  const userHeaders = buildUserHeaders();
-  if (userHeaders) {
-    finalInit.headers = { ...finalInit.headers, ...userHeaders };
-  }
-  return fetch(url, finalInit);
+  const method = finalInit.method || "GET";
+  const response = await tauriRoute(url, method, finalInit);
+  return new Response(JSON.stringify(await response.json()), {
+    status: response.status,
+    headers: { "Content-Type": "application/json" },
+  });
 }

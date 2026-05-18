@@ -6,6 +6,9 @@ pub mod notes;
 pub mod gemini_key;
 pub mod uploads;
 
+#[cfg(test)]
+pub mod tests;
+
 pub use crate::db::gemini_key_metadata;
 pub use crate::db::Meeting;
 pub use crate::db::Project;

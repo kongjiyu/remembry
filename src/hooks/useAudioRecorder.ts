@@ -39,6 +39,30 @@ export function useAudioRecorder(): AudioRecorderState & AudioRecorderActions {
     const chunksRef = useRef<Blob[]>([]);
     const timerRef = useRef<NodeJS.Timeout | null>(null);
 
+    // Check microphone permission status on mount (without triggering prompt)
+    useEffect(() => {
+        const checkPermission = async () => {
+            if (!navigator.permissions) {
+                // Permissions API not supported, leave hasPermission as null
+                return;
+            }
+
+            try {
+                const result = await navigator.permissions.query({ name: "microphone" as PermissionName });
+                setHasPermission(result.state === "granted");
+
+                // Listen for permission changes (user changes in system settings)
+                result.onchange = () => {
+                    setHasPermission(result.state === "granted");
+                };
+            } catch {
+                // Query failed (e.g., some WebView platforms don't support this), leave as null
+            }
+        };
+
+        checkPermission();
+    }, []);
+
     // Cleanup on unmount
     useEffect(() => {
         return () => {

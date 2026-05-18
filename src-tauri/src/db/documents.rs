@@ -37,6 +37,7 @@ pub fn upsert_document(doc: &Document) -> Result<(), String> {
     }).map_err(|e| e.to_string())
 }
 
+#[allow(dead_code)]
 pub fn list_documents_for_project(project_id: &str) -> Result<Vec<Document>, String> {
     with_db(|conn| {
         let mut stmt = conn.prepare(
@@ -60,6 +61,7 @@ pub fn list_documents_for_project(project_id: &str) -> Result<Vec<Document>, Str
     }).map_err(|e| e.to_string())
 }
 
+#[allow(dead_code)]
 pub fn delete_document(doc_id: &str) -> Result<(), String> {
     with_db(|conn| {
         conn.execute("DELETE FROM project_documents WHERE id = ?1", params![doc_id])
