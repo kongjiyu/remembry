@@ -9,6 +9,7 @@ const path = require('path');
 const TAURI_CONF = path.join(__dirname, '..', 'src-tauri', 'tauri.conf.json');
 const CAPABILITIES = path.join(__dirname, '..', 'src-tauri', 'capabilities', 'default.json');
 const FRONTEND_DIST = '../out'; // Tauri serves Next.js static export (output: "export" in next.config.ts)
+const DEV_URL = 'http://localhost:3000';
 
 const DANGEROUS_PATTERNS = {
   'withGlobalTauri': [true, 'withGlobalTauri must be false'],
@@ -43,8 +44,13 @@ function checkTauriConf() {
   }
 
   // Tauri serves the Next.js static export from ../out (not .next)
-  if (conf.build?.frontendDist && conf.build.frontendDist !== FRONTEND_DIST) {
-    errors.push(`[${TAURI_CONF}] frontendDist should be ${FRONTEND_DIST} (current: ${conf.build.frontendDist})`);
+  if (conf.build?.frontendDist !== FRONTEND_DIST) {
+    errors.push(`[${TAURI_CONF}] frontendDist should be ${FRONTEND_DIST} (current: ${conf.build?.frontendDist})`);
+  }
+
+  // devUrl must point to the Next.js dev server for HMR (required to prevent stale UI from ../out fallback)
+  if (conf.build?.devUrl !== DEV_URL) {
+    errors.push(`[${TAURI_CONF}] devUrl should be ${DEV_URL} (current: ${conf.build?.devUrl})`);
   }
 
   return errors;

@@ -203,6 +203,7 @@ pub fn run() {
             commands::uploads::enqueue_meeting_upload_processing,
             commands::uploads::list_upload_jobs,
             commands::uploads::get_upload_job,
+            commands::uploads::dismiss_upload_job,
             commands::uploads::cancel_upload_job,
         ])
         .setup(|app| {

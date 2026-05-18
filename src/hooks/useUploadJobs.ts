@@ -74,6 +74,15 @@ export function useUploadJobs(pollIntervalMs = 3000) {
         [jobs]
     );
 
+    const dismissJob = useCallback(async (jobId: string): Promise<boolean> => {
+        if (!isRunningInTauri()) return false;
+        const dismissed = await invoke<boolean>("dismiss_upload_job", { jobId });
+        if (dismissed) {
+            setJobs((prev) => prev.filter((job) => job.job_id !== jobId));
+        }
+        return dismissed;
+    }, []);
+
     return {
         jobs,
         activeJobs,
@@ -81,6 +90,7 @@ export function useUploadJobs(pollIntervalMs = 3000) {
         failedJobs,
         loading,
         getJob,
+        dismissJob,
         refetch: fetchJobs,
     };
 }

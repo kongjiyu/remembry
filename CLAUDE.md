@@ -102,11 +102,13 @@ Users save their personal Gemini API key via `/settings` page (stored in SQLite 
 ### Build for Production
 
 ```bash
-# Build Next.js static frontend
+# Build Next.js static frontend (regenerates out/ for production Tauri bundles)
 npm run build:tauri
 
 # Build Tauri desktop bundle
 npm run tauri:build
 ```
+
+> **Dev mode:** `npm run tauri:dev` loads the app from `http://localhost:3000` (Next.js dev server) so frontend changes appear immediately with HMR. If the UI looks stale, restart `npm run tauri:dev` — rebuilding is not needed.
 
 Desktop bundles (MSI/NSIS on Windows) will be in `src-tauri/target/release/bundle/`.

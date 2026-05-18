@@ -3,15 +3,44 @@
 import { useEffect, useRef } from "react";
 import { useUploadJobs } from "@/hooks/useUploadJobs";
 import { Card, CardContent } from "@/components/ui/card";
-import { Loader2, AlertCircle } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Loader2, AlertCircle, X } from "lucide-react";
 import Link from "next/link";
 
 interface UploadJobsBannerProps {
     onJobCompleted?: (jobId: string) => void;
 }
 
+function normalizeUploadError(error: string | null, status: string) {
+    const raw = error || status;
+    const escapedMessage = raw.match(/\\?"message\\?"\s*:\s*\\?"([^"\\]+(?:\\.[^"\\]*)*)\\?"/);
+    if (escapedMessage?.[1]) {
+        return escapedMessage[1]
+            .replace(/\\"/g, '"')
+            .replace(/\\n/g, " ")
+            .replace(/\\\\/g, "\\");
+    }
+
+    const jsonStart = raw.indexOf("{");
+    if (jsonStart === -1) return raw;
+
+    try {
+        const parsed = JSON.parse(raw.slice(jsonStart));
+        const message = parsed?.error?.message;
+        if (typeof message === "string" && message.trim()) {
+            return raw.slice(0, jsonStart).trim()
+                ? `${raw.slice(0, jsonStart).trim()} ${message}`
+                : message;
+        }
+    } catch {
+        return raw;
+    }
+
+    return raw;
+}
+
 export function UploadJobsBanner({ onJobCompleted }: UploadJobsBannerProps) {
-    const { activeJobs, failedJobs, completedJobs } = useUploadJobs();
+    const { activeJobs, failedJobs, completedJobs, dismissJob } = useUploadJobs();
     const seenRef = useRef<Set<string>>(new Set());
 
     // Fire callback once per newly completed job
@@ -64,26 +93,46 @@ export function UploadJobsBanner({ onJobCompleted }: UploadJobsBannerProps) {
 
             {/* FAILED / CANCELLED JOBS */}
             {failedJobs.length > 0 && (
-                <Card className="border-red-200 dark:border-red-800 bg-red-50/50 dark:bg-red-950/30">
-                    <CardContent className="p-4">
+                <Card className="overflow-hidden border-red-200 bg-red-50/50 dark:border-red-800 dark:bg-red-950/30">
+                    <CardContent className="min-w-0 overflow-hidden p-4">
                         <div className="flex items-center gap-2 mb-2">
                             <AlertCircle className="size-4 text-red-500" />
                             <span className="text-sm font-medium text-red-700 dark:text-red-300">Failed uploads</span>
                         </div>
-                        {failedJobs.map((job) => (
-                            <div key={job.job_id} className="flex items-center gap-3 py-1">
-                                <span className="text-sm truncate flex-1">{job.title}</span>
-                                <span className="text-xs text-red-500 shrink-0">{job.error || job.status}</span>
-                                {job.meeting_id && (
-                                    <Link
-                                        href={`/meetings/detail?id=${encodeURIComponent(job.meeting_id)}`}
-                                        className="text-xs text-primary hover:underline shrink-0"
-                                    >
-                                        View
-                                    </Link>
-                                )}
-                            </div>
-                        ))}
+                        <div className="space-y-3">
+                            {failedJobs.map((job) => (
+                                <div key={job.job_id} className="min-w-0 max-w-full overflow-hidden">
+                                    <div className="flex min-w-0 items-start gap-3">
+                                        <div className="min-w-0 flex-1">
+                                            {job.title && (
+                                                <p className="min-w-0 truncate text-sm">{job.title}</p>
+                                            )}
+                                            <p className="mt-1 max-w-full whitespace-normal text-xs leading-relaxed text-red-500 [overflow-wrap:anywhere]">
+                                                {normalizeUploadError(job.error, job.status)}
+                                            </p>
+                                        </div>
+                                        {job.meeting_id && (
+                                            <Link
+                                                href={`/meetings/detail?id=${encodeURIComponent(job.meeting_id)}`}
+                                                className="shrink-0 text-xs text-primary hover:underline"
+                                            >
+                                                View
+                                            </Link>
+                                        )}
+                                        <Button
+                                            type="button"
+                                            variant="ghost"
+                                            size="icon-sm"
+                                            className="-mt-1 shrink-0 text-red-500 hover:bg-red-500/10 hover:text-red-400"
+                                            aria-label={`Dismiss failed upload ${job.title || job.job_id}`}
+                                            onClick={() => void dismissJob(job.job_id)}
+                                        >
+                                            <X className="size-4" />
+                                        </Button>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
                     </CardContent>
                 </Card>
             )}

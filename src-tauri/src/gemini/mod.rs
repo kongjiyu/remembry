@@ -4,6 +4,7 @@ mod files;
 mod generate;
 
 use reqwest::Client;
+use serde::Deserialize;
 use std::time::Duration;
 
 pub const GEMINI_BASE_URL: &str = "https://generativelanguage.googleapis.com";
@@ -94,5 +95,66 @@ pub fn sanitize_api_key_from_error(err: &str) -> String {
         .to_string()
 }
 
+#[derive(Debug, Deserialize)]
+struct GeminiErrorBody {
+    error: Option<GeminiErrorDetail>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GeminiErrorDetail {
+    message: Option<String>,
+}
+
+pub fn format_gemini_error(status: reqwest::StatusCode, body: &str) -> String {
+    let sanitized = sanitize_api_key_from_error(body);
+    let message = serde_json::from_str::<GeminiErrorBody>(&sanitized)
+        .ok()
+        .and_then(|body| body.error)
+        .and_then(|error| error.message)
+        .filter(|message| !message.trim().is_empty())
+        .unwrap_or_else(|| sanitized.trim().to_string());
+
+    let message = if message.is_empty() {
+        "No error details returned.".to_string()
+    } else {
+        message
+    };
+
+    format!("Request failed with status {}: {}", status, message)
+}
+
 pub use files::{upload_file, delete_file};
 pub use generate::{transcribe_audio, extract_meeting_notes};
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn format_gemini_error_extracts_message_from_json_body() {
+        let body = r#"{
+            "error": {
+                "code": 429,
+                "message": "Your prepayment credits are depleted.",
+                "status": "RESOURCE_EXHAUSTED"
+            }
+        }"#;
+
+        let formatted = format_gemini_error(reqwest::StatusCode::TOO_MANY_REQUESTS, body);
+
+        assert_eq!(
+            formatted,
+            "Request failed with status 429 Too Many Requests: Your prepayment credits are depleted."
+        );
+    }
+
+    #[test]
+    fn format_gemini_error_sanitizes_api_keys_in_plain_text_body() {
+        let body = "https://generativelanguage.googleapis.com/v1beta/files/abc?key=secret_key";
+
+        let formatted = format_gemini_error(reqwest::StatusCode::BAD_REQUEST, body);
+
+        assert!(formatted.contains("?key=[REDACTED]"));
+        assert!(!formatted.contains("secret_key"));
+    }
+}

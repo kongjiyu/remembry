@@ -1,7 +1,7 @@
 //! Gemini generateContent — transcription and note extraction.
 
 use crate::db::{TranscriptionResult, MeetingNotes};
-use crate::gemini::{GeminiClient, retry_with_backoff, is_retryable_error, sanitize_api_key_from_error};
+use crate::gemini::{GeminiClient, retry_with_backoff, is_retryable_error, sanitize_api_key_from_error, format_gemini_error};
 use serde::Deserialize;
 
 const TRANSCRIPTION_MODEL: &str = "gemini-3-flash-preview";
@@ -148,18 +148,16 @@ async fn send_generate_request(
         let status = response.status();
         if status == reqwest::StatusCode::BAD_REQUEST {
             let body = response.text().await.unwrap_or_default();
-            return Err(format!("Bad request: {}", sanitize_api_key_from_error(&body)));
+            return Err(format_gemini_error(status, &body));
         }
         if is_retryable_error(status) {
-            // Read body once, sanitize it, then format the error so the future
-            // result is Resolved before being returned from the closure.
             let body = response.text().await.unwrap_or_default();
-            return Err(format!("Request failed with status {}: {:?}", status, sanitize_api_key_from_error(&body)));
+            return Err(format_gemini_error(status, &body));
         }
 
         if !status.is_success() {
             let body = response.text().await.unwrap_or_default();
-            return Err(format!("generateContent failed ({}): {}", status, sanitize_api_key_from_error(&body)));
+            return Err(format_gemini_error(status, &body));
         }
 
         let gemini_resp: GeminiResponse = response.json().await

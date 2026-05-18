@@ -691,6 +691,20 @@ pub fn get_upload_job(job_id: String) -> Result<Option<UploadJob>, String> {
 }
 
 #[tauri::command]
+pub fn dismiss_upload_job(job_id: String) -> Result<bool, String> {
+    let record = db::upload_jobs::get_upload_job(&job_id)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "Job not found".to_string())?;
+
+    if !["failed", "cancelled", "completed"].contains(&record.status.as_str()) {
+        return Ok(false);
+    }
+
+    db::upload_jobs::delete_upload_job(&job_id).map_err(|e| e.to_string())?;
+    Ok(true)
+}
+
+#[tauri::command]
 pub fn cancel_upload_job(job_id: String, app: AppHandle) -> Result<bool, String> {
     // Load current record to check state
     let record = db::upload_jobs::get_upload_job(&job_id)

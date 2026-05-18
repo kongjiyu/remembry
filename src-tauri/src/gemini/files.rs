@@ -1,6 +1,6 @@
 //! Gemini Files API — resumable upload and polling.
 
-use crate::gemini::{GeminiClient, GEMINI_BASE_URL, GEMINI_API_VERSION, retry_with_backoff, is_retryable_error, normalize_file_resource_name, sanitize_api_key_from_error};
+use crate::gemini::{GeminiClient, GEMINI_BASE_URL, GEMINI_API_VERSION, retry_with_backoff, is_retryable_error, normalize_file_resource_name, sanitize_api_key_from_error, format_gemini_error};
 use serde::Deserialize;
 use std::path::Path;
 
@@ -79,7 +79,7 @@ async fn initiate_upload(
     let status = response.status();
     if !status.is_success() && !is_retryable_error(status) {
         let body = response.text().await.unwrap_or_default();
-        return Err(format!("upload init failed ({}): {}", status, body));
+        return Err(format_gemini_error(status, &body));
     }
 
     // Primary: x-goog-upload-url. Fallback: location (lowercase).
@@ -123,7 +123,7 @@ async fn upload_and_finalize(
     if !response.status().is_success() && !is_retryable_error(response.status()) {
         let status = response.status();
         let body = response.text().await.unwrap_or_default();
-        return Err(format!("upload failed ({}): {}", status, body));
+        return Err(format_gemini_error(status, &body));
     }
 
     let upload_resp: UploadResponse = response.json().await
@@ -191,7 +191,7 @@ pub async fn poll_file_status(client: &GeminiClient, name: &str) -> Result<FileI
         if !response.status().is_success() {
             let status = response.status();
             let body = response.text().await.unwrap_or_default();
-            return Err(format!("poll failed ({}): {}", status, sanitize_api_key_from_error(&body)));
+            return Err(format_gemini_error(status, &body));
         }
 
         // Read body once and try direct FileInfo, then wrapped { file: FileInfo }
@@ -239,7 +239,7 @@ pub async fn delete_file(client: &GeminiClient, name: &str) -> Result<(), String
     }
     if !status.is_success() {
         let body = response.text().await.unwrap_or_default();
-        return Err(format!("delete failed ({}): {}", status, sanitize_api_key_from_error(&body)));
+        return Err(format_gemini_error(status, &body));
     }
 
     Ok(())
