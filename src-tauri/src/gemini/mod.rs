@@ -70,5 +70,29 @@ pub fn is_retryable_error(status: reqwest::StatusCode) -> bool {
         || status.as_u16() >= 500
 }
 
+/// Normalize a Gemini file resource name to its canonical `files/{name}` form.
+/// If the input already starts with `files/`, return it unchanged.
+/// Otherwise, prefix it with `files/`.
+pub fn normalize_file_resource_name(name: &str) -> String {
+    if name.starts_with("files/") {
+        name.to_string()
+    } else {
+        format!("files/{}", name)
+    }
+}
+
+/// Strip the API key from an error message to prevent key exposure in logs.
+pub fn sanitize_api_key_from_error(err: &str) -> String {
+    // Replace ?key=... and &key=... patterns, preserving the separator
+    let err = regex::Regex::new(r"\?key=[A-Za-z0-9_-]+")
+        .unwrap()
+        .replace_all(err, "?key=[REDACTED]")
+        .to_string();
+    regex::Regex::new(r"&key=[A-Za-z0-9_-]+")
+        .unwrap()
+        .replace_all(&err, "&key=[REDACTED]")
+        .to_string()
+}
+
 pub use files::{upload_file, delete_file};
 pub use generate::{transcribe_audio, extract_meeting_notes};

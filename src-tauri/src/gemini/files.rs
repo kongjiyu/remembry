@@ -1,6 +1,6 @@
 //! Gemini Files API — resumable upload and polling.
 
-use crate::gemini::{GeminiClient, GEMINI_BASE_URL, GEMINI_API_VERSION, retry_with_backoff, is_retryable_error};
+use crate::gemini::{GeminiClient, GEMINI_BASE_URL, GEMINI_API_VERSION, retry_with_backoff, is_retryable_error, normalize_file_resource_name, sanitize_api_key_from_error};
 use serde::Deserialize;
 use std::path::Path;
 
@@ -71,7 +71,10 @@ async fn initiate_upload(
         .json(&init_body)
         .send()
         .await
-        .map_err(|e| format!("upload init request failed: {}", e))?;
+        .map_err(|e| {
+            let msg = format!("upload init request failed: {}", e);
+            sanitize_api_key_from_error(&msg)
+        })?;
 
     let status = response.status();
     if !status.is_success() && !is_retryable_error(status) {
@@ -112,7 +115,10 @@ async fn upload_and_finalize(
         .body(file_content.to_vec())
         .send()
         .await
-        .map_err(|e| format!("upload request failed: {}", e))?;
+        .map_err(|e| {
+            let msg = format!("upload request failed: {}", e);
+            sanitize_api_key_from_error(&msg)
+        })?;
 
     if !response.status().is_success() && !is_retryable_error(response.status()) {
         let status = response.status();
@@ -172,17 +178,20 @@ pub async fn poll_file_status(client: &GeminiClient, name: &str) -> Result<FileI
     for attempt in 0..max_attempts {
         let response = retry_with_backoff(|| async {
             client.http()
-                .get(&client.files_api_uri(&format!("files/{}", name)))
+                .get(&client.files_api_uri(&normalize_file_resource_name(name)))
                 .send()
                 .await
-                .map_err(|e| format!("poll request failed: {}", e))
+                .map_err(|e| {
+                    let msg = format!("poll request failed: {}", e);
+                    sanitize_api_key_from_error(&msg)
+                })
         }).await
         .map_err(|e| format!("poll failed after retries: {:?}", e))?;
 
         if !response.status().is_success() {
             let status = response.status();
             let body = response.text().await.unwrap_or_default();
-            return Err(format!("poll failed ({}): {}", status, body));
+            return Err(format!("poll failed ({}): {}", status, sanitize_api_key_from_error(&body)));
         }
 
         // Read body once and try direct FileInfo, then wrapped { file: FileInfo }
@@ -213,17 +222,100 @@ pub async fn poll_file_status(client: &GeminiClient, name: &str) -> Result<FileI
 }
 
 pub async fn delete_file(client: &GeminiClient, name: &str) -> Result<(), String> {
+    let resource = normalize_file_resource_name(name);
     let response = client.http()
-        .delete(&client.files_api_uri(&format!("files/{}", name)))
+        .delete(&client.files_api_uri(&resource))
         .send()
         .await
-        .map_err(|e| format!("delete request failed: {}", e))?;
+        .map_err(|e| {
+            let msg = format!("delete request failed: {}", e);
+            sanitize_api_key_from_error(&msg)
+        })?;
 
-    if !response.status().is_success() {
-        let status = response.status();
+    let status = response.status();
+    if status == reqwest::StatusCode::NOT_FOUND {
+        // Already gone — treat as success (idempotent cleanup)
+        return Ok(());
+    }
+    if !status.is_success() {
         let body = response.text().await.unwrap_or_default();
-        return Err(format!("delete failed ({}): {}", status, body));
+        return Err(format!("delete failed ({}): {}", status, sanitize_api_key_from_error(&body)));
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ── normalize_file_resource_name tests ─────────────────────────────────
+
+    #[test]
+    fn normalize_file_resource_name_plain_id() {
+        assert_eq!(
+            normalize_file_resource_name("abc123"),
+            "files/abc123"
+        );
+    }
+
+    #[test]
+    fn normalize_file_resource_name_already_prefixed() {
+        assert_eq!(
+            normalize_file_resource_name("files/abc123"),
+            "files/abc123"
+        );
+    }
+
+    #[test]
+    fn normalize_file_resource_name_empty_string() {
+        // Edge case: empty string becomes "files/" which is still valid
+        assert_eq!(normalize_file_resource_name(""), "files/");
+    }
+
+    // ── sanitize_api_key_from_error tests ──────────────────────────────────
+
+    #[test]
+    fn sanitize_api_key_removes_key_param() {
+        let input = r#"{"error": "Bad request", "uri": "https://generativelanguage.googleapis.com/v1beta/files/abc123?key=AIzaSyD7foobar"}"#;
+        let sanitized = sanitize_api_key_from_error(input);
+        assert!(sanitized.contains("?key=[REDACTED]"));
+        assert!(!sanitized.contains("AIzaSyD7foobar"));
+    }
+
+    #[test]
+    fn sanitize_api_key_no_key_present() {
+        let input = r#"{"error": "Not found", "status": 404}"#;
+        let sanitized = sanitize_api_key_from_error(input);
+        assert_eq!(sanitized, input);
+    }
+
+    #[test]
+    fn sanitize_api_key_multiple_keys_preserves_separators() {
+        let input = r#"GET /v1beta/files/foo?key=KEY1&other=val&key=KEY2"#;
+        let sanitized = sanitize_api_key_from_error(input);
+        assert!(sanitized.contains("?key=[REDACTED]"));
+        assert!(sanitized.contains("&key=[REDACTED]"));
+        assert!(!sanitized.contains("KEY1"));
+        assert!(!sanitized.contains("KEY2"));
+        assert!(sanitized.contains("?key=[REDACTED]&other=val&key=[REDACTED]"));
+    }
+
+    #[test]
+    fn sanitize_api_key_ampersand_key_param_preserves_separator() {
+        let input = r#"https://generativelanguage.googleapis.com/v1beta/files/abc123?alt=media&key=AIzaSyD7foobar"#;
+        let sanitized = sanitize_api_key_from_error(input);
+        assert!(!sanitized.contains("AIzaSyD7foobar"));
+        assert!(sanitized.contains("&key=[REDACTED]"));
+        assert!(sanitized.contains("?alt=media&key=[REDACTED]"));
+    }
+
+    #[test]
+    fn sanitize_api_key_question_mark_key_param_preserves_separator() {
+        let input = r#"https://generativelanguage.googleapis.com/v1beta/files/abc123?key=AIzaSyD7foobar"#;
+        let sanitized = sanitize_api_key_from_error(input);
+        assert!(!sanitized.contains("AIzaSyD7foobar"));
+        assert!(sanitized.contains("?key=[REDACTED]"));
+        assert!(!sanitized.contains("&key="));
+    }
 }
