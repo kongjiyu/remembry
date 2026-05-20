@@ -113,7 +113,7 @@ export function UploadJobsBanner({ onJobCompleted }: UploadJobsBannerProps) {
                                         </div>
                                         {job.meeting_id && (
                                             <Link
-                                                href={`/meetings/detail?id=${encodeURIComponent(job.meeting_id)}`}
+                                                href={`/events/detail?id=${encodeURIComponent(job.meeting_id)}`}
                                                 className="shrink-0 text-xs text-primary hover:underline"
                                             >
                                                 View

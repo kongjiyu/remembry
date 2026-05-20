@@ -1,5 +1,6 @@
 //! Meeting database operations.
 
+use crate::db::events::EventKnowledge;
 use crate::db::with_db;
 use rusqlite::params;
 use serde::{Deserialize, Serialize};
@@ -16,7 +17,12 @@ pub struct Meeting {
     pub file_type: String,
     pub created_at: String,
     pub transcription: Option<TranscriptionResult>,
-    pub notes_by_language: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub event_type: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub event_tags: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub knowledge_by_language: Option<serde_json::Value>,
     pub default_language: Option<String>,
     pub available_languages: Option<Vec<String>>,
 }
@@ -52,8 +58,18 @@ pub struct QAndA {
 pub fn list_meetings(project_id: Option<&str>) -> Result<Vec<Meeting>, String> {
     with_db(|conn| {
         let sql = match project_id {
-            Some(_) => "SELECT id, project_id, title, context, file_name, file_size, mime_type, file_type, created_at, transcription, notes_by_language, default_language, available_languages FROM meetings WHERE project_id = ?1 ORDER BY created_at DESC",
-            None => "SELECT id, project_id, title, context, file_name, file_size, mime_type, file_type, created_at, transcription, notes_by_language, default_language, available_languages FROM meetings ORDER BY created_at DESC",
+            Some(_) => {
+                "SELECT id, project_id, title, context, file_name, file_size, mime_type, file_type, \
+                 created_at, transcription, knowledge_by_language, event_type, event_tags, \
+                 default_language, available_languages \
+                 FROM meetings WHERE project_id = ?1 ORDER BY created_at DESC"
+            }
+            None => {
+                "SELECT id, project_id, title, context, file_name, file_size, mime_type, file_type, \
+                 created_at, transcription, knowledge_by_language, event_type, event_tags, \
+                 default_language, available_languages \
+                 FROM meetings ORDER BY created_at DESC"
+            }
         };
 
         let mut stmt = conn.prepare(sql).map_err(|e| e.to_string())?;
@@ -70,8 +86,11 @@ pub fn list_meetings(project_id: Option<&str>) -> Result<Vec<Meeting>, String> {
 
 fn meeting_row_map(row: &rusqlite::Row) -> rusqlite::Result<Meeting> {
     let transcription_str: Option<String> = row.get(9)?;
-    let notes_by_language_str: Option<String> = row.get(10)?;
-    let available_languages_str: Option<String> = row.get(12)?;
+    let knowledge_by_language_str: Option<String> = row.get(10)?;
+    let event_type_str: Option<String> = row.get(11)?;
+    let event_tags_str: Option<String> = row.get(12)?;
+    let default_language: Option<String> = row.get(13)?;
+    let available_languages_str: Option<String> = row.get(14)?;
 
     Ok(Meeting {
         id: row.get(0)?,
@@ -84,8 +103,10 @@ fn meeting_row_map(row: &rusqlite::Row) -> rusqlite::Result<Meeting> {
         file_type: row.get(7)?,
         created_at: row.get(8)?,
         transcription: transcription_str.and_then(|s| serde_json::from_str(&s).ok()),
-        notes_by_language: notes_by_language_str.and_then(|s| serde_json::from_str(&s).ok()),
-        default_language: row.get(11)?,
+        event_type: event_type_str,
+        event_tags: event_tags_str.and_then(|s| serde_json::from_str(&s).ok()),
+        knowledge_by_language: knowledge_by_language_str.and_then(|s| serde_json::from_str(&s).ok()),
+        default_language,
         available_languages: available_languages_str.and_then(|s| serde_json::from_str(&s).ok()),
     })
 }
@@ -93,7 +114,10 @@ fn meeting_row_map(row: &rusqlite::Row) -> rusqlite::Result<Meeting> {
 pub fn get_meeting(meeting_id: &str) -> Result<Option<Meeting>, String> {
     with_db(|conn| {
         let mut stmt = conn.prepare(
-            "SELECT id, project_id, title, context, file_name, file_size, mime_type, file_type, created_at, transcription, notes_by_language, default_language, available_languages FROM meetings WHERE id = ?1"
+            "SELECT id, project_id, title, context, file_name, file_size, mime_type, file_type, \
+             created_at, transcription, knowledge_by_language, event_type, event_tags, \
+             default_language, available_languages \
+             FROM meetings WHERE id = ?1"
         ).map_err(|e| e.to_string())?;
 
         let mut rows = stmt.query_map(params![meeting_id], meeting_row_map)
@@ -107,13 +131,18 @@ pub fn upsert_meeting(meeting: &Meeting) -> Result<(), String> {
     with_db(|conn| {
         let transcription_json = meeting.transcription.as_ref()
             .and_then(|t| serde_json::to_string(t).ok());
-        let notes_json = meeting.notes_by_language.as_ref()
+        let knowledge_json = meeting.knowledge_by_language.as_ref()
             .and_then(|n| serde_json::to_string(n).ok());
+        let event_tags_json = meeting.event_tags.as_ref()
+            .and_then(|t| serde_json::to_string(t).ok());
         let available_langs_json = meeting.available_languages.as_ref()
             .and_then(|a| serde_json::to_string(a).ok());
 
         conn.execute(
-            "INSERT OR REPLACE INTO meetings (id, project_id, title, context, file_name, file_size, mime_type, file_type, created_at, transcription, notes_by_language, default_language, available_languages) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+            "INSERT OR REPLACE INTO meetings \
+             (id, project_id, title, context, file_name, file_size, mime_type, file_type, created_at, \
+              transcription, knowledge_by_language, event_type, event_tags, default_language, available_languages) \
+              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
             params![
                 meeting.id,
                 meeting.project_id,
@@ -125,7 +154,9 @@ pub fn upsert_meeting(meeting: &Meeting) -> Result<(), String> {
                 meeting.file_type,
                 meeting.created_at,
                 transcription_json,
-                notes_json,
+                knowledge_json,
+                meeting.event_type,
+                event_tags_json,
                 meeting.default_language,
                 available_langs_json,
             ],
@@ -137,7 +168,7 @@ pub fn upsert_meeting(meeting: &Meeting) -> Result<(), String> {
 
 pub fn get_meeting_notes(meeting_id: &str, language: &str) -> Result<Option<MeetingNotes>, String> {
     with_db(|conn| {
-        let mut stmt = conn.prepare("SELECT notes_by_language FROM meetings WHERE id = ?1")
+        let mut stmt = conn.prepare("SELECT knowledge_by_language FROM meetings WHERE id = ?1")
             .map_err(|e| e.to_string())?;
         let notes_json: Option<String> = stmt.query_row(params![meeting_id], |row| row.get(0))
             .map_err(|e| e.to_string())
@@ -167,7 +198,7 @@ pub fn get_meeting_notes(meeting_id: &str, language: &str) -> Result<Option<Meet
 
 pub fn update_meeting_notes(meeting_id: &str, language: &str, notes: &MeetingNotes) -> Result<(), String> {
     with_db(|conn| {
-        let mut stmt = conn.prepare("SELECT notes_by_language FROM meetings WHERE id = ?1")
+        let mut stmt = conn.prepare("SELECT knowledge_by_language FROM meetings WHERE id = ?1")
             .map_err(|e| e.to_string())?;
         let existing: Option<String> = stmt.query_row(params![meeting_id], |row| row.get(0))
             .map_err(|e| e.to_string())
@@ -186,7 +217,70 @@ pub fn update_meeting_notes(meeting_id: &str, language: &str, notes: &MeetingNot
         let langs_json = serde_json::to_string(&languages).map_err(|e| e.to_string())?;
 
         conn.execute(
-            "UPDATE meetings SET notes_by_language = ?1, available_languages = ?2, default_language = COALESCE(default_language, ?3) WHERE id = ?4",
+            "UPDATE meetings SET knowledge_by_language = ?1, available_languages = ?2, \
+             default_language = COALESCE(default_language, ?3) WHERE id = ?4",
+            params![notes_json, langs_json, language, meeting_id],
+        ).map_err(|e| e.to_string())?;
+
+        Ok(())
+    }).map_err(|e| e.to_string())
+}
+
+/// Get EventKnowledge for a meeting and language.
+pub fn get_event_knowledge(meeting_id: &str, language: &str) -> Result<Option<EventKnowledge>, String> {
+    with_db(|conn| {
+        let mut stmt = conn.prepare("SELECT knowledge_by_language FROM meetings WHERE id = ?1")
+            .map_err(|e| e.to_string())?;
+        let notes_json: Option<String> = stmt.query_row(params![meeting_id], |row| row.get(0))
+            .map_err(|e| e.to_string())
+            .ok();
+
+        let notes_value = match notes_json {
+            Some(s) => serde_json::from_str::<serde_json::Value>(&s).map_err(|e| e.to_string())?,
+            None => return Ok(None),
+        };
+
+        let lang_notes = if language == "en" {
+            notes_value.get("en").or(notes_value.get("default"))
+        } else {
+            notes_value.get(language)
+        };
+
+        match lang_notes {
+            Some(v) => {
+                let knowledge: EventKnowledge = serde_json::from_value(v.clone())
+                    .map_err(|e| e.to_string())?;
+                Ok(Some(knowledge))
+            }
+            None => Ok(None),
+        }
+    }).map_err(|e| e.to_string())
+}
+
+/// Update EventKnowledge for a meeting and language.
+pub fn update_event_knowledge(meeting_id: &str, language: &str, knowledge: &EventKnowledge) -> Result<(), String> {
+    with_db(|conn| {
+        let mut stmt = conn.prepare("SELECT knowledge_by_language FROM meetings WHERE id = ?1")
+            .map_err(|e| e.to_string())?;
+        let existing: Option<String> = stmt.query_row(params![meeting_id], |row| row.get(0))
+            .map_err(|e| e.to_string())
+            .ok();
+
+        let mut notes_map = existing
+            .and_then(|s| serde_json::from_str::<serde_json::Map<String, serde_json::Value>>(&s).ok())
+            .unwrap_or_default();
+
+        let notes_value = serde_json::to_value(knowledge).map_err(|e| e.to_string())?;
+        notes_map.insert(language.to_string(), notes_value);
+
+        let notes_json = serde_json::to_string(&notes_map).map_err(|e| e.to_string())?;
+
+        let languages: Vec<String> = notes_map.keys().cloned().collect();
+        let langs_json = serde_json::to_string(&languages).map_err(|e| e.to_string())?;
+
+        conn.execute(
+            "UPDATE meetings SET knowledge_by_language = ?1, available_languages = ?2, \
+             default_language = COALESCE(default_language, ?3) WHERE id = ?4",
             params![notes_json, langs_json, language, meeting_id],
         ).map_err(|e| e.to_string())?;
 
@@ -228,10 +322,12 @@ pub fn delete_meeting(meeting_id: &str) -> Result<bool, String> {
 /// Delete a meeting and its associated transcript documents.
 /// Takes an explicit connection so tests can use with_db_impl on an isolated pool.
 pub fn delete_meeting_inner(conn: &rusqlite::Connection, meeting_id: &str) -> Result<bool, String> {
-    // Fetch meeting to get project_id and transcription for legacy cleanup
     let meeting: Option<Meeting> = {
         let mut stmt = conn.prepare(
-            "SELECT id, project_id, title, context, file_name, file_size, mime_type, file_type, created_at, transcription, notes_by_language, default_language, available_languages FROM meetings WHERE id = ?1"
+            "SELECT id, project_id, title, context, file_name, file_size, mime_type, file_type, \
+             created_at, transcription, knowledge_by_language, event_type, event_tags, \
+             default_language, available_languages \
+             FROM meetings WHERE id = ?1"
         ).map_err(|e| e.to_string())?;
         let mut rows = stmt.query_map(params![meeting_id], meeting_row_map)
             .map_err(|e| e.to_string())?;
@@ -250,7 +346,6 @@ pub fn delete_meeting_inner(conn: &rusqlite::Connection, meeting_id: &str) -> Re
     ).map_err(|e| e.to_string())?;
 
     // Delete legacy transcript documents where id matches old pattern (documents/uuid)
-    // and project_id, display_name, mime_type, content exactly match the meeting's transcript
     if let Some(ref transcription) = meeting.transcription {
         let legacy_display_name = format!("{}.txt", meeting.title);
         conn.execute(
@@ -271,8 +366,6 @@ mod tests {
     use super::*;
     use std::sync::{Arc, Mutex};
 
-    /// Isolated DB pool per test — same pattern as db::upload_jobs::tests.
-    /// Avoids global state poisoning and parallel test interference.
     struct TestDb {
         pool: crate::db::DbPool,
         _guard: std::sync::MutexGuard<'static, ()>,
@@ -286,7 +379,6 @@ mod tests {
             let tmp = tempfile::tempdir().unwrap();
             let db_path = tmp.path().join("test.db");
             let pool = crate::db::DbPool::new(&db_path).unwrap();
-            // Leak tmp so the DB file stays valid for the full test.
             std::mem::forget(tmp);
             Self { pool, _guard }
         }
@@ -308,7 +400,6 @@ mod tests {
         let project_id = "test-project-det-001";
         let now = chrono::Utc::now().to_rfc3339();
 
-        // Create project (INSERT OR IGNORE for idempotence if guard is poisoned)
         td.with_db(|conn| {
             conn.execute(
                 "INSERT OR IGNORE INTO projects (id, display_name, color, description, goals, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
@@ -322,39 +413,25 @@ mod tests {
             language: Some("en".to_string()),
         }).unwrap();
 
-        // Insert meeting
         td.with_db(|conn| {
             conn.execute(
-                "INSERT INTO meetings (id, project_id, title, context, file_name, file_size, mime_type, file_type, created_at, transcription, notes_by_language, default_language, available_languages) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+                "INSERT INTO meetings (id, project_id, title, context, file_name, file_size, mime_type, file_type, created_at, transcription, knowledge_by_language, event_type, event_tags, default_language, available_languages) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
                 rusqlite::params![
-                    meeting_id,
-                    project_id,
-                    "Test Meeting",
-                    Option::<String>::None,
-                    "test.mp3",
-                    1234_i64,
-                    "audio/mpeg",
-                    "audio",
-                    &now,
-                    &transcription_json,
-                    Option::<String>::None,
-                    "en",
-                    Option::<String>::None,
+                    meeting_id, project_id, "Test Meeting", Option::<String>::None,
+                    "test.mp3", 1234_i64, "audio/mpeg", "audio", &now,
+                    &transcription_json, Option::<String>::None, "meeting", Option::<String>::None,
+                    "en", Option::<String>::None,
                 ],
             ).map_err(|e| e.to_string())?;
             Ok(())
         }).unwrap();
 
-        // Insert deterministic transcript document
         let doc_id = format!("meeting-transcript/{}", meeting_id);
         td.with_db(|conn| {
             conn.execute(
                 "INSERT INTO project_documents (id, project_id, display_name, mime_type, content, metadata, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
                 rusqlite::params![
-                    &doc_id,
-                    project_id,
-                    "Test Meeting.txt",
-                    "text/plain",
+                    &doc_id, project_id, "Test Meeting.txt", "text/plain",
                     "Test transcript content",
                     serde_json::to_string(&serde_json::json!({"source": "meeting_transcript", "meeting_id": meeting_id})).unwrap(),
                     &now,
@@ -363,15 +440,12 @@ mod tests {
             Ok(())
         }).unwrap();
 
-        // Verify document exists before deletion
         let doc_exists_before = td.with_db(|conn| {
             let mut stmt = conn.prepare("SELECT 1 FROM project_documents WHERE id = ?1 LIMIT 1").map_err(|e| e.to_string())?;
             Ok(stmt.query_row(params![&doc_id], |_row| Ok(())).is_ok())
         }).unwrap();
         assert!(doc_exists_before, "Document should exist before deletion");
 
-        // Delete the meeting via delete_meeting API (uses global — but our isolated pool is not registered there,
-        // so we call the inner logic directly using with_db_impl on our pool)
         let pool_arc: Arc<Mutex<Option<crate::db::DbPool>>> = Arc::new(Mutex::new(Some(td.pool.clone())));
         let result = crate::db::with_db_impl(Some(pool_arc.clone()), |conn| {
             delete_meeting_inner(conn, meeting_id)
@@ -379,14 +453,12 @@ mod tests {
         assert!(result.is_ok(), "delete_meeting should succeed");
         assert!(result.unwrap(), "delete_meeting should return true for existing meeting");
 
-        // Verify meeting is gone
         let meeting_still_exists = td.with_db(|conn| {
             let mut stmt = conn.prepare("SELECT 1 FROM meetings WHERE id = ?1 LIMIT 1").map_err(|e| e.to_string())?;
             Ok(stmt.query_row(params![meeting_id], |_row| Ok(())).is_ok())
         }).unwrap();
         assert!(!meeting_still_exists, "Meeting should be deleted");
 
-        // Verify deterministic document is gone
         let doc_still_exists = td.with_db(|conn| {
             let mut stmt = conn.prepare("SELECT 1 FROM project_documents WHERE id = ?1 LIMIT 1").map_err(|e| e.to_string())?;
             Ok(stmt.query_row(params![&doc_id], |_row| Ok(())).is_ok())
@@ -403,7 +475,6 @@ mod tests {
         let now = chrono::Utc::now().to_rfc3339();
         let transcript_text = "Legacy transcript content for cleanup test";
 
-        // Create project
         td.with_db(|conn| {
             conn.execute(
                 "INSERT OR IGNORE INTO projects (id, display_name, color, description, goals, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
@@ -417,54 +488,36 @@ mod tests {
             language: Some("en".to_string()),
         }).unwrap();
 
-        // Insert meeting
         td.with_db(|conn| {
             conn.execute(
-                "INSERT INTO meetings (id, project_id, title, context, file_name, file_size, mime_type, file_type, created_at, transcription, notes_by_language, default_language, available_languages) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+                "INSERT INTO meetings (id, project_id, title, context, file_name, file_size, mime_type, file_type, created_at, transcription, knowledge_by_language, event_type, event_tags, default_language, available_languages) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
                 rusqlite::params![
-                    meeting_id,
-                    project_id,
-                    "Legacy Meeting Title",
-                    Option::<String>::None,
-                    "test.mp3",
-                    1234_i64,
-                    "audio/mpeg",
-                    "audio",
-                    &now,
-                    &transcription_json,
-                    Option::<String>::None,
-                    "en",
-                    Option::<String>::None,
+                    meeting_id, project_id, "Legacy Meeting Title", Option::<String>::None,
+                    "test.mp3", 1234_i64, "audio/mpeg", "audio", &now,
+                    &transcription_json, Option::<String>::None, "meeting", Option::<String>::None,
+                    "en", Option::<String>::None,
                 ],
             ).map_err(|e| e.to_string())?;
             Ok(())
         }).unwrap();
 
-        // Insert legacy transcript document (old pattern: documents/uuid)
         td.with_db(|conn| {
             conn.execute(
                 "INSERT INTO project_documents (id, project_id, display_name, mime_type, content, metadata, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
                 rusqlite::params![
-                    &legacy_doc_id,
-                    project_id,
-                    "Legacy Meeting Title.txt",
-                    "text/plain",
-                    transcript_text,
-                    Option::<String>::None,
-                    &now,
+                    &legacy_doc_id, project_id, "Legacy Meeting Title.txt", "text/plain",
+                    transcript_text, Option::<String>::None, &now,
                 ],
             ).map_err(|e| e.to_string())?;
             Ok(())
         }).unwrap();
 
-        // Verify legacy document exists before deletion
         let doc_exists_before = td.with_db(|conn| {
             let mut stmt = conn.prepare("SELECT 1 FROM project_documents WHERE id = ?1 LIMIT 1").map_err(|e| e.to_string())?;
             Ok(stmt.query_row(params![&legacy_doc_id], |_row| Ok(())).is_ok())
         }).unwrap();
         assert!(doc_exists_before, "Legacy document should exist before deletion");
 
-        // Delete the meeting
         let pool_arc: Arc<Mutex<Option<crate::db::DbPool>>> = Arc::new(Mutex::new(Some(td.pool.clone())));
         let result = crate::db::with_db_impl(Some(pool_arc.clone()), |conn| {
             delete_meeting_inner(conn, meeting_id)
@@ -472,14 +525,12 @@ mod tests {
         assert!(result.is_ok(), "delete_meeting should succeed");
         assert!(result.unwrap(), "delete_meeting should return true for existing meeting");
 
-        // Verify meeting is gone
         let meeting_still_exists = td.with_db(|conn| {
             let mut stmt = conn.prepare("SELECT 1 FROM meetings WHERE id = ?1 LIMIT 1").map_err(|e| e.to_string())?;
             Ok(stmt.query_row(params![meeting_id], |_row| Ok(())).is_ok())
         }).unwrap();
         assert!(!meeting_still_exists, "Meeting should be deleted");
 
-        // Verify legacy document with matching content is gone
         let doc_still_exists = td.with_db(|conn| {
             let mut stmt = conn.prepare("SELECT 1 FROM project_documents WHERE id = ?1 LIMIT 1").map_err(|e| e.to_string())?;
             Ok(stmt.query_row(params![&legacy_doc_id], |_row| Ok(())).is_ok())

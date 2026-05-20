@@ -5,6 +5,8 @@ pub mod meetings;
 pub mod notes;
 pub mod gemini_key;
 pub mod uploads;
+pub mod events;
+pub mod ask;
 
 #[cfg(test)]
 pub mod tests;

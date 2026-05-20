@@ -9,7 +9,7 @@ const path = require('path');
 const TAURI_CONF = path.join(__dirname, '..', 'src-tauri', 'tauri.conf.json');
 const CAPABILITIES = path.join(__dirname, '..', 'src-tauri', 'capabilities', 'default.json');
 const FRONTEND_DIST = '../out'; // Tauri serves Next.js static export (output: "export" in next.config.ts)
-const DEV_URL = 'http://localhost:3000';
+const DEV_URL = 'http://localhost:3010';
 
 const DANGEROUS_PATTERNS = {
   'withGlobalTauri': [true, 'withGlobalTauri must be false'],

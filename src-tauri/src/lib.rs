@@ -205,6 +205,11 @@ pub fn run() {
             commands::uploads::get_upload_job,
             commands::uploads::dismiss_upload_job,
             commands::uploads::cancel_upload_job,
+            commands::events::get_event_knowledge,
+            commands::events::update_event_knowledge,
+            commands::events::extract_event_knowledge,
+            commands::events::regenerate_event_knowledge,
+            commands::ask::ask_question,
         ])
         .setup(|app| {
             // Initialize database

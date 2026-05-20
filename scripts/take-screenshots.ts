@@ -1,6 +1,6 @@
 import { chromium } from "@playwright/test";
 
-const BASE_URL = "http://localhost:3000";
+const BASE_URL = "http://localhost:3010";
 const OUTPUT_DIR = "./public";
 
 async function validatePage(page: any, name: string): Promise<boolean> {

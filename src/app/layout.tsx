@@ -15,9 +15,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Remembry - AI Meeting Notes",
-  description: "Transform your meeting recordings into structured, actionable notes powered by AI.",
-  keywords: ["meeting notes", "AI", "transcription", "productivity"],
+  title: "Remembry - AI Event Knowledge",
+  description: "Transform your event recordings into structured, searchable knowledge powered by AI.",
+  keywords: ["event knowledge", "AI", "transcription", "productivity", "knowledge extraction"],
 };
 
 export default function RootLayout({

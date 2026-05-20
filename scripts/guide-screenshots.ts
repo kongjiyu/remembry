@@ -2,7 +2,7 @@ import { chromium } from "@playwright/test";
 import * as fs from "fs";
 import * as path from "path";
 
-const BASE_URL = "http://localhost:3000";
+const BASE_URL = "http://localhost:3010";
 const OUTPUT_DIR = "./screenshots/guide";
 const AUDIO_FILE = "./Recording Jan 15 2026.m4a";
 

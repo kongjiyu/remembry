@@ -1,11 +1,109 @@
 //! Gemini generateContent — transcription and note extraction.
 
-use crate::db::{TranscriptionResult, MeetingNotes};
+use crate::db::{TranscriptionResult, MeetingNotes, EventKnowledge};
 use crate::gemini::{GeminiClient, retry_with_backoff, is_retryable_error, sanitize_api_key_from_error, format_gemini_error};
 use serde::Deserialize;
 
 const TRANSCRIPTION_MODEL: &str = "gemini-3-flash-preview";
 const EXTRACTION_MODEL: &str = "gemini-3-flash-preview";
+
+/// Extract the first complete JSON object from a Gemini response text.
+///
+/// Uses brace-depth scanning to correctly handle:
+/// - Strings containing `{` or `}` (escaped or unescaped)
+/// - Nested objects
+/// - HTML tags like `<code>{ ... }</code>` or `{ ... }</code>` after the JSON
+///
+/// Returns `None` if no opening `{` is found or the braces are unbalanced.
+fn extract_json_from_response(text: &str) -> Option<String> {
+    let start = text.find('{')?;
+    let bytes = text[start..].as_bytes();
+
+    let mut depth = 0i32;
+    let mut in_string = false;
+    let mut escaped = false;
+
+    for (i, &byte) in bytes.iter().enumerate() {
+        if escaped {
+            escaped = false;
+            continue;
+        }
+
+        match byte {
+            b'\\' if in_string => {
+                escaped = true;
+            }
+            b'"' => {
+                in_string = !in_string;
+            }
+            b'{' if !in_string => {
+                depth += 1;
+            }
+            b'}' if !in_string => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(text[start..start + i + 1].to_string());
+                }
+            }
+            _ => {}
+        }
+    }
+
+    None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_extract_json_plain_json() {
+        let json = r#"{"foo": "bar", "nested": {"a": 1}}"#;
+        assert_eq!(extract_json_from_response(json), Some(json.to_string()));
+    }
+
+    #[test]
+    fn test_extract_json_fenced_json() {
+        let text = "Here is the JSON:\n```json\n{\"foo\": \"bar\"}\n```\nAnd some explanation";
+        let extracted = extract_json_from_response(text);
+        assert_eq!(extracted, Some(r#"{"foo": "bar"}"#.to_string()));
+    }
+
+    #[test]
+    fn test_extract_json_with_code_tags() {
+        let text = "<code>{\"foo\": \"bar\"}</code>";
+        let extracted = extract_json_from_response(text);
+        assert_eq!(extracted, Some(r#"{"foo": "bar"}"#.to_string()));
+    }
+
+    #[test]
+    fn test_extract_json_code_tag_closed_after() {
+        // This is the actual failure case: `{...}</code>`
+        let text = r#"Here's the result: {"foo": "bar", "nested": {"a": 1, "b": 2}}</code>"#;
+        let extracted = extract_json_from_response(text);
+        assert_eq!(extracted, Some(r#"{"foo": "bar", "nested": {"a": 1, "b": 2}}"#.to_string()));
+    }
+
+    #[test]
+    fn test_extract_json_nested_braces_in_strings() {
+        // JSON string containing {} should not cause early termination
+        let text = r#"{"content": "has {curly} in string", "nested": {"a": 1}}"#;
+        let extracted = extract_json_from_response(text);
+        assert_eq!(extracted, Some(text.to_string()));
+    }
+
+    #[test]
+    fn test_extract_json_no_object() {
+        let text = "Just plain text without JSON";
+        assert_eq!(extract_json_from_response(text), None);
+    }
+
+    #[test]
+    fn test_extract_json_unbalanced() {
+        let text = "{\"foo\": {"; // missing closing brace
+        assert_eq!(extract_json_from_response(text), None);
+    }
+}
 
 #[derive(Debug, Deserialize)]
 struct GeminiResponse {
@@ -81,7 +179,7 @@ pub async fn extract_meeting_notes(
 
 Context about this meeting: {}
 
-Please extract the following from the transcript and respond ONLY with valid JSON (no markdown, no explanation):
+Return raw JSON only. Do not wrap it in markdown, HTML, XML, or code tags.
 
 {{
   "summary": "A 2-3 sentence concise summary of the meeting",
@@ -116,17 +214,140 @@ Transcript:
     let response = send_generate_request(client, EXTRACTION_MODEL, request_body).await?;
     let text = parse_gemini_text_response(response)?;
 
-    // Try to extract JSON from response (might be wrapped in markdown code blocks)
-    let json_str = text.trim()
-        .trim_start_matches("```json")
-        .trim_start_matches("```")
-        .trim_end_matches("```")
-        .trim();
+    let json_str = extract_json_from_response(&text)
+        .ok_or_else(|| format!("No JSON object found in response. Response was: {}", text))?;
 
-    let notes: MeetingNotes = serde_json::from_str(json_str)
+    let notes: MeetingNotes = serde_json::from_str(&json_str)
         .map_err(|e| format!("Failed to parse meeting notes JSON: {}. Response was: {}", e, text))?;
 
     Ok(notes)
+}
+
+/// Extract structured EventKnowledge from a transcript using dynamic prompts
+/// based on event_type and event_tags.
+pub async fn extract_event_knowledge(
+    client: &GeminiClient,
+    transcription: &str,
+    context: &str,
+    event_type: &str,
+    event_tags: &[String],
+    language: &str,
+) -> Result<EventKnowledge, String> {
+    let lang_instruction = match language {
+        "zh" | "chinese" => "Respond in Chinese (Simplified).",
+        "ja" | "japanese" => "Respond in Japanese.",
+        "ko" | "korean" => "Respond in Korean.",
+        "es" | "spanish" => "Respond in Spanish.",
+        "fr" | "french" => "Respond in French.",
+        "de" | "german" => "Respond in German.",
+        _ => "Respond in English.",
+    };
+
+    let tags_hint = if event_tags.is_empty() {
+        String::new()
+    } else {
+        format!("\nEvent tags to guide extraction: {}.\n", event_tags.join(", "))
+    };
+
+    let event_type_hint = format!(
+        "\nEvent type: '{}'. Adapt extraction to focus on {} specific patterns.\n",
+        event_type,
+        event_type
+    );
+
+    let prompt = format!(
+        r#"You are an AI assistant that analyzes transcripts and extracts structured event knowledge.
+
+Context about this event: {}
+
+Event type: '{}'{}
+Return raw JSON only. Do not wrap it in markdown, HTML, XML, or code tags.
+
+Tags are important: use meaningful, reusable tags that can link related items together. When an item has a clear topic, assign at least one non-empty tag. Keep tags consistent across items so the frontend can surface related concepts, observations, insights, and references by tag matching.
+
+Provide 3-5 key_points only — short overview bullets for quick scanning, 1-2 sentences each. Do not include more.
+
+{{
+  "schema_version": 1,
+  "event_type": "{}",
+  "title": "A short descriptive title for this event",
+  "summary": "A 2-3 sentence concise summary of the event",
+  "concepts": [
+    {{
+      "id": "concept_{{canonical_name}}",
+      "type": "concept",
+      "content": "Description of the concept from the transcript",
+      "canonical_name": "snake_case_normalized_name",
+      "title": "Human-readable title",
+      "aliases": ["alias1", "alias2"],
+      "description": "Brief description",
+      "confidence": 0.95,
+      "evidence": [{{ "snippet": "Relevant quote from transcript", "speaker": "Speaker name if available" }}],
+      "tags": ["roadmap", "performance"]
+    }}
+  ],
+  "key_points": [
+    {{ "id": "kp_1", "type": "observation", "content": "Short overview bullet — 1-2 sentences for quick scanning", "confidence": 0.9, "evidence": [{{ "snippet": "Quote" }}], "tags": [] }}
+  ],
+  "insights": [
+    {{ "id": "insight_1", "type": "insight", "content": "Key insight or discovery", "confidence": 0.85, "evidence": [{{ "snippet": "Quote" }}], "tags": ["user_feedback", "roadmap"] }}
+  ],
+  "questions": [
+    {{ "id": "q_1", "type": "question", "content": "Question raised", "status": "open", "evidence": [{{ "snippet": "Quote" }}], "tags": ["performance", "roadmap"] }}
+  ],
+  "decisions": [
+    {{ "id": "d_1", "type": "decision", "content": "Decision made", "evidence": [{{ "snippet": "Quote", "speaker": "Who made this decision" }}], "tags": ["roadmap"] }}
+  ],
+  "action_items": [
+    {{ "id": "task_1", "type": "task", "content": "Action item description", "assignee": "Person responsible or null", "due_date": "YYYY-MM-DD or null", "evidence": [{{ "snippet": "Quote" }}], "tags": ["user_feedback"] }}
+  ],
+  "observations": [
+    {{ "id": "obs_1", "type": "observation", "subtype": "balancing_issue", "content": "Observational detail", "evidence": [{{ "snippet": "Quote" }}], "tags": ["performance", "user_feedback"] }}
+  ],
+  "references": [
+    {{ "id": "ref_1", "type": "reference", "content": "Reference or resource mentioned", "evidence": [{{ "snippet": "Quote" }}], "tags": ["roadmap", "performance"] }}
+  ],
+  "related_topics": ["topic1", "topic2"],
+  "sentiment": {{
+    "overall": "positive|neutral|negative|mixed",
+    "important_emotions": ["satisfaction", "frustration"]
+  }}
+}}
+
+Transcript:
+{}
+
+{}{}"#,
+        context,
+        event_type,
+        tags_hint,
+        event_type,
+        transcription,
+        lang_instruction,
+        event_type_hint
+    );
+
+    let request_body = serde_json::json!({
+        "contents": [{
+            "parts": [{ "text": prompt }]
+        }],
+        "generation_config": {
+            "temperature": 0.3,
+            "top_p": 0.8,
+            "max_output_tokens": 4096
+        }
+    });
+
+    let response = send_generate_request(client, EXTRACTION_MODEL, request_body).await?;
+    let text = parse_gemini_text_response(response)?;
+
+    let json_str = extract_json_from_response(&text)
+        .ok_or_else(|| format!("No JSON object found in response. Response was: {}", text))?;
+
+    let ek: EventKnowledge = serde_json::from_str(&json_str)
+        .map_err(|e| format!("Failed to parse EventKnowledge JSON: {}. Response was: {}", e, text))?;
+
+    Ok(ek)
 }
 
 async fn send_generate_request(

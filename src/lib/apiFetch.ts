@@ -78,9 +78,44 @@ const TAURI_COMMANDS: TauriCommandEntry[] = [
     const m = matchRoute("/api/meetings/:id/regenerate-notes", p);
     return { meetingId: m?.id || "", language: (body as { language?: string })?.language || "en" };
   }},
+  { pattern: "/api/events", method: "GET", command: "list_meetings", extractParams: (_, q) => {
+    const params: Record<string, unknown> = {};
+    const pid = q?.get("project_id");
+    if (pid) params.projectId = pid;
+    return params;
+  }},
+  { pattern: "/api/events/:id", method: "GET", command: "get_meeting", extractParams: (p) => ({ meetingId: matchRoute("/api/events/:id", p)?.id || "" }) },
+  { pattern: "/api/events/:id", method: "DELETE", command: "delete_meeting", extractParams: (p) => ({ meetingId: matchRoute("/api/events/:id", p)?.id || "" }) },
+  { pattern: "/api/events/:id/knowledge", method: "GET", command: "get_event_knowledge", extractParams: (p, q) => {
+    const m = matchRoute("/api/events/:id/knowledge", p);
+    return { meetingId: m?.id || "", language: q?.get("language") || "en" };
+  }},
+  { pattern: "/api/events/:id/knowledge", method: "POST", command: "extract_event_knowledge", extractParams: (p, _, body) => {
+    const m = matchRoute("/api/events/:id/knowledge", p);
+    return { meetingId: m?.id || "", language: (body as { language?: string })?.language || "en" };
+  }},
+  { pattern: "/api/events/:id/knowledge", method: "PUT", command: "update_event_knowledge", extractParams: (p, _, body) => {
+    const m = matchRoute("/api/events/:id/knowledge", p);
+    const b = body as { language?: string; knowledge?: unknown };
+    return { meetingId: m?.id || "", language: b?.language || "en", knowledge: b?.knowledge };
+  }},
+  { pattern: "/api/events/:id/regenerate", method: "POST", command: "regenerate_event_knowledge", extractParams: (p, _, body) => {
+    const m = matchRoute("/api/events/:id/regenerate", p);
+    return { meetingId: m?.id || "", language: (body as { language?: string })?.language || "en" };
+  }},
   { pattern: "/api/settings/gemini-key", method: "GET", command: "get_gemini_key_status", extractParams: () => ({}) },
   { pattern: "/api/settings/gemini-key", method: "POST", command: "save_gemini_key", extractParams: (_, __, body) => ({ apiKey: (body as { apiKey?: string })?.apiKey || "" }) },
   { pattern: "/api/settings/gemini-key", method: "DELETE", command: "delete_gemini_key", extractParams: () => ({}) },
+  { pattern: "/api/ask", method: "POST", command: "ask_question", extractParams: (_, __, body) => {
+    const b = body as { scope?: string; projectId?: string; meetingId?: string; question?: string; language?: string } | null;
+    return {
+      scope: b?.scope || "project",
+      projectId: b?.projectId || "",
+      meetingId: b?.meetingId || null,
+      question: b?.question || "",
+      language: b?.language || "en",
+    };
+  }},
 ];
 
 class ApiResponse {

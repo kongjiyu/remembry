@@ -2,6 +2,7 @@
 
 mod files;
 mod generate;
+pub mod validation;
 
 use reqwest::Client;
 use serde::Deserialize;
@@ -124,7 +125,7 @@ pub fn format_gemini_error(status: reqwest::StatusCode, body: &str) -> String {
 }
 
 pub use files::{upload_file, delete_file};
-pub use generate::{transcribe_audio, extract_meeting_notes};
+pub use generate::{transcribe_audio, extract_meeting_notes, extract_event_knowledge};
 
 #[cfg(test)]
 mod tests {

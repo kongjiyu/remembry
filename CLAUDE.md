@@ -109,6 +109,6 @@ npm run build:tauri
 npm run tauri:build
 ```
 
-> **Dev mode:** `npm run tauri:dev` loads the app from `http://localhost:3000` (Next.js dev server) so frontend changes appear immediately with HMR. If the UI looks stale, restart `npm run tauri:dev` — rebuilding is not needed.
+> **Dev mode:** `npm run tauri:dev` loads the app from `http://localhost:3010` (Next.js dev server) so frontend changes appear immediately with HMR. If the UI looks stale, restart `npm run tauri:dev` — rebuilding is not needed.
 
 Desktop bundles (MSI/NSIS on Windows) will be in `src-tauri/target/release/bundle/`.

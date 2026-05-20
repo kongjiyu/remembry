@@ -108,7 +108,7 @@ export default function DashboardPage() {
                                 Good Morning, <span className="font-semibold text-primary">Creator</span>
                             </CardTitle>
                             <CardDescription className="text-lg">
-                                You have <span className="font-medium text-foreground">{totalMeetings} meetings</span> processed and ready for search.
+                                You have <span className="font-medium text-foreground">{totalMeetings} events</span> processed and ready for search.
                             </CardDescription>
                         </CardHeader>
                         <CardContent className="relative z-10 space-y-4">
@@ -130,7 +130,7 @@ export default function DashboardPage() {
                                     className="gap-3 h-12 px-6 shadow-lg shadow-primary/25 rounded-xl font-medium"
                                     asChild
                                 >
-                                    <Link href="/meetings/new?mode=record">
+                                    <Link href="/events/new?mode=record">
                                         <div className="flex items-center justify-center size-8 rounded-full bg-white/20">
                                             <Mic className="size-5" />
                                         </div>
@@ -195,14 +195,14 @@ export default function DashboardPage() {
                 {/* STATS & ACTIONS COLUMN */}
                 <div className="col-span-1 md:col-span-4 flex flex-col gap-6">
                     <div className="grid grid-cols-2 gap-4">
-                        <Link href="/meetings/new" className="col-span-2">
+                        <Link href="/events/new" className="col-span-2">
                             <Button size="lg" className="w-full h-14 text-lg font-medium shadow-md shadow-primary/20 rounded-xl">
                                 <Upload className="mr-2 size-5" /> Upload
                             </Button>
                         </Link>
-                        <Link href="/meetings">
+                        <Link href="/events">
                             <Button variant="outline" size="lg" className="w-full h-12 rounded-xl bg-card/50 backdrop-blur-sm">
-                                <Mic className="mr-2 size-4" /> Meetings
+                                <Mic className="mr-2 size-4" /> Events
                             </Button>
                         </Link>
                         <Link href="/projects">
@@ -239,16 +239,16 @@ export default function DashboardPage() {
                     </Card>
                 </div>
 
-                {/* RECENT MEETINGS */}
+                {/* RECENT EVENTS */}
                 <div className="col-span-1 md:col-span-12">
                     <Card className="border-none shadow-sm bg-card/50 backdrop-blur-xl">
                         <CardHeader className="flex flex-row items-center justify-between">
                             <div>
                                 <CardTitle>Recent Activity</CardTitle>
-                                <CardDescription>Your latest meeting notes and insights</CardDescription>
+                                <CardDescription>Your latest event notes and insights</CardDescription>
                             </div>
                             <Button variant="ghost" size="sm" asChild>
-                                <Link href="/meetings" className="text-muted-foreground hover:text-primary">View All</Link>
+                                <Link href="/events" className="text-muted-foreground hover:text-primary">View All</Link>
                             </Button>
                         </CardHeader>
                         <CardContent>
@@ -259,14 +259,14 @@ export default function DashboardPage() {
                                     <div className="text-center py-12 border-2 border-dashed rounded-xl border-muted/50">
                                         <div className="flex flex-col items-center gap-2">
                                             <Mic className="size-8 text-muted-foreground/50" />
-                                            <p className="text-muted-foreground font-medium">No recent meetings</p>
+                                            <p className="text-muted-foreground font-medium">No recent events</p>
                                         </div>
                                     </div>
                                 ) : (
                                     recentMeetingsList.map((meeting) => (
                                         <Link
                                             key={meeting.id}
-                                            href={`/meetings/detail?id=${encodeURIComponent(meeting.id)}&projectName=${encodeURIComponent(meeting.project_id)}&displayName=${encodeURIComponent(meeting.projectDisplayName || '')}`}
+                                            href={`/events/detail?id=${encodeURIComponent(meeting.id)}&projectName=${encodeURIComponent(meeting.project_id)}&displayName=${encodeURIComponent(meeting.projectDisplayName || '')}`}
                                             className="group flex items-center justify-between p-4 rounded-xl hover:bg-muted/50 transition-all duration-200 border border-transparent hover:border-border/50 min-w-0"
                                         >
                                             <div className="flex items-center gap-4 min-w-0 flex-1">

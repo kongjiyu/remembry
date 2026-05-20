@@ -94,6 +94,10 @@ pub struct ProcessUploadParams {
     pub notes_languages: Vec<String>,
     #[serde(default)]
     pub mime_type: Option<String>,
+    #[serde(default)]
+    pub event_type: String,
+    #[serde(default)]
+    pub event_tags: Vec<String>,
 }
 
 fn resolve_mime_type(params: &ProcessUploadParams) -> String {
@@ -555,6 +559,9 @@ async fn process_upload_background(job_id: String, app: AppHandle) {
     let meeting_id = Uuid::new_v4().to_string();
     let now = Utc::now().to_rfc3339();
 
+    // Normalize event_type before persistence and extraction
+    let normalized_event_type = if params.event_type.is_empty() { "meeting".to_string() } else { params.event_type.clone() };
+
     let meeting = Meeting {
         id: meeting_id.clone(),
         project_id: params.project_id.clone(),
@@ -566,7 +573,9 @@ async fn process_upload_background(job_id: String, app: AppHandle) {
         file_type: params.file_type.clone(),
         created_at: now,
         transcription,
-        notes_by_language: None,
+        event_type: Some(normalized_event_type.clone()),
+        event_tags: Some(params.event_tags.clone()),
+        knowledge_by_language: None,
         default_language: Some("en".to_string()),
         available_languages: None,
     };
@@ -598,18 +607,19 @@ async fn process_upload_background(job_id: String, app: AppHandle) {
         return;
     }
 
-    // Generate notes for text transcripts
+    // Generate EventKnowledge for text transcripts
     if params.file_type == "text" {
         if let Some(transcription) = &meeting.transcription {
             let language = params.notes_languages.first().cloned().unwrap_or_else(|| "en".to_string());
-            match gemini::extract_meeting_notes(&client, &transcription.text, params.context.as_deref().unwrap_or(""), &language).await {
-                Ok(notes) => {
-                    if let Err(e) = db::meetings::update_meeting_notes(&meeting_id, &language, &notes) {
-                        log::warn!("Failed to update meeting notes: {}", e);
+            match gemini::extract_event_knowledge(&client, &transcription.text, params.context.as_deref().unwrap_or(""), &normalized_event_type, &params.event_tags, &language).await {
+                Ok(knowledge) => {
+                    let repaired = crate::gemini::validation::repair_event_knowledge(knowledge);
+                    if let Err(e) = db::meetings::update_event_knowledge(&meeting_id, &language, &repaired) {
+                        log::warn!("Failed to update event knowledge: {}", e);
                     }
                 }
                 Err(e) => {
-                    log::warn!("Note extraction failed: {}", e);
+                    log::warn!("Event knowledge extraction failed: {}", e);
                 }
             }
         }
@@ -738,7 +748,7 @@ pub fn cancel_upload_job(job_id: String, app: AppHandle) -> Result<bool, String>
 }
 
 #[tauri::command]
-pub fn process_meeting_upload(
+pub async fn process_meeting_upload(
     upload_id: String,
     params: ProcessUploadParams,
     app_temp_dir: tauri::AppHandle,
@@ -768,35 +778,24 @@ pub fn process_meeting_upload(
             .map_err(|e| format!("Failed to read transcript file: {}", e))?;
         Some(TranscriptionResult { text: content, language: None })
     } else {
-        let result = tokio::runtime::Runtime::new()
-            .map_err(|e| e.to_string())?
-            .block_on(async {
-                gemini::upload_file(&client, &temp_path, &mime_type).await
-            }).map_err(|e| format!("Gemini upload failed: {}", e))?;
+        let result = gemini::upload_file(&client, &temp_path, &mime_type).await
+            .map_err(|e| format!("Gemini upload failed: {}", e))?;
 
         let gemini_file_name = result.name.clone();
 
-        let transcription = tokio::runtime::Runtime::new()
-            .map_err(|e| e.to_string())?
-            .block_on(async {
-                gemini::transcribe_audio(&client, &result.uri, &mime_type, context_str).await
-            });
+        let transcription = gemini::transcribe_audio(&client, &result.uri, &mime_type, context_str).await;
 
         // Clean up Gemini file on transcription failure
         let transcription = match transcription {
             Ok(t) => t,
             Err(e) => {
-                let _ = tokio::runtime::Runtime::new()
-                    .map_err(|e| e.to_string())?
-                    .block_on(async { gemini::delete_file(&client, &gemini_file_name).await });
+                let _ = gemini::delete_file(&client, &gemini_file_name).await;
                 return Err(format!("Transcription failed: {}", e));
             }
         };
 
-        // Clean up Gemini file on success (synchronous path also cleans up)
-        let _ = tokio::runtime::Runtime::new()
-            .map_err(|e| e.to_string())?
-            .block_on(async { gemini::delete_file(&client, &gemini_file_name).await });
+        // Clean up Gemini file on success
+        let _ = gemini::delete_file(&client, &gemini_file_name).await;
 
         Some(transcription)
     };
@@ -811,6 +810,9 @@ pub fn process_meeting_upload(
     let meeting_id = Uuid::new_v4().to_string();
     let now = Utc::now().to_rfc3339();
 
+    // Normalize event_type before persistence and extraction
+    let normalized_event_type = if params.event_type.is_empty() { "meeting".to_string() } else { params.event_type.clone() };
+
     let meeting = Meeting {
         id: meeting_id.clone(),
         project_id: params.project_id.clone(),
@@ -822,24 +824,31 @@ pub fn process_meeting_upload(
         file_type: params.file_type.clone(),
         created_at: now,
         transcription: Some(transcription),
-        notes_by_language: None,
+        event_type: Some(normalized_event_type.clone()),
+        event_tags: Some(params.event_tags.clone()),
+        knowledge_by_language: None,
         default_language: Some("en".to_string()),
         available_languages: None,
     };
 
     db::meetings::upsert_meeting(&meeting).map_err(|e| e.to_string())?;
 
-    // If text transcript, generate notes directly
+    // If text transcript, generate EventKnowledge directly
     if params.file_type == "text" {
         if let Some(t) = &meeting.transcription {
             let language = params.notes_languages.first().cloned().unwrap_or_else(|| "en".to_string());
-            let notes = tokio::runtime::Runtime::new()
-                .map_err(|e| e.to_string())?
-                .block_on(async {
-                    gemini::extract_meeting_notes(&client, &t.text, params.context.as_deref().unwrap_or(""), &language).await
-                }).map_err(|e| format!("Note extraction failed: {}", e))?;
+            let knowledge = crate::gemini::extract_event_knowledge(
+                &client,
+                &t.text,
+                params.context.as_deref().unwrap_or(""),
+                &normalized_event_type,
+                &params.event_tags,
+                &language,
+            ).await
+                .map_err(|e| format!("Event knowledge extraction failed: {}", e))?;
 
-            db::meetings::update_meeting_notes(&meeting_id, &language, &notes)
+            let repaired = crate::gemini::validation::repair_event_knowledge(knowledge);
+            db::meetings::update_event_knowledge(&meeting_id, &language, &repaired)
                 .map_err(|e| e.to_string())?;
         }
     }
@@ -1364,6 +1373,8 @@ mod mime_type_tests {
             file_type: "audio".into(),
             notes_languages: vec!["en".into()],
             mime_type: Some("audio/webm".into()),
+            event_type: "meeting".into(),
+            event_tags: vec![],
         };
         assert_eq!(resolve_mime_type(&params), "audio/webm");
     }
@@ -1377,6 +1388,8 @@ mod mime_type_tests {
             file_type: "audio".into(),
             notes_languages: vec!["en".into()],
             mime_type: Some("audio/wav".into()),
+            event_type: "meeting".into(),
+            event_tags: vec![],
         };
         assert_eq!(resolve_mime_type(&params), "audio/wav");
     }
@@ -1390,6 +1403,8 @@ mod mime_type_tests {
             file_type: "audio".into(),
             notes_languages: vec!["en".into()],
             mime_type: None,
+            event_type: "meeting".into(),
+            event_tags: vec![],
         };
         assert_eq!(resolve_mime_type(&params), "audio/mpeg");
     }
@@ -1403,6 +1418,8 @@ mod mime_type_tests {
             file_type: "video".into(),
             notes_languages: vec!["en".into()],
             mime_type: None,
+            event_type: "meeting".into(),
+            event_tags: vec![],
         };
         assert_eq!(resolve_mime_type(&params), "video/mp4");
     }
@@ -1416,7 +1433,69 @@ mod mime_type_tests {
             file_type: "audio".into(),
             notes_languages: vec!["en".into()],
             mime_type: Some("audio/mp3".into()),
+            event_type: "meeting".into(),
+            event_tags: vec![],
         };
         assert_eq!(resolve_mime_type(&params), "audio/mp3");
+    }
+
+    #[test]
+    fn process_upload_params_event_type_defaults_to_empty_string() {
+        // serde(default) on event_type means missing field → ""
+        let json = r#"{"project_id":"p","title":"t","file_type":"audio","notes_languages":["en"]}"#;
+        let params: ProcessUploadParams = serde_json::from_str(json).unwrap();
+        assert_eq!(params.event_type, "", "Missing event_type should default to empty string");
+        assert!(params.event_tags.is_empty());
+    }
+
+    #[test]
+    fn process_upload_params_event_type_explicit_values_preserved() {
+        let params = ProcessUploadParams {
+            project_id: "p".into(),
+            title: "t".into(),
+            context: None,
+            file_type: "audio".into(),
+            notes_languages: vec!["en".into()],
+            mime_type: None,
+            event_type: "interview".into(),
+            event_tags: vec!["hr".into(), "hiring".into()],
+        };
+        assert_eq!(params.event_type, "interview");
+        assert_eq!(params.event_tags, vec!["hr", "hiring"]);
+    }
+
+    #[test]
+    fn event_type_normalized_to_meeting_when_empty() {
+        // When event_type is empty, it should be normalized to "meeting"
+        // before being saved to the meeting record and before extraction.
+        let params = ProcessUploadParams {
+            project_id: "p".into(),
+            title: "t".into(),
+            context: None,
+            file_type: "text".into(),
+            notes_languages: vec!["en".into()],
+            mime_type: None,
+            event_type: "".into(),
+            event_tags: vec![],
+        };
+        let normalized = if params.event_type.is_empty() { "meeting".to_string() } else { params.event_type.clone() };
+        assert_eq!(normalized, "meeting", "Empty event_type should normalize to 'meeting'");
+    }
+
+    #[test]
+    fn event_type_preserved_when_provided() {
+        // When event_type is explicitly provided, it should be preserved as-is
+        let params = ProcessUploadParams {
+            project_id: "p".into(),
+            title: "t".into(),
+            context: None,
+            file_type: "text".into(),
+            notes_languages: vec!["en".into()],
+            mime_type: None,
+            event_type: "interview".into(),
+            event_tags: vec!["hr".into()],
+        };
+        let normalized = if params.event_type.is_empty() { "meeting".to_string() } else { params.event_type.clone() };
+        assert_eq!(normalized, "interview", "Provided event_type should be preserved");
     }
 }

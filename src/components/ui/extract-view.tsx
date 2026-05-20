@@ -53,6 +53,30 @@ export function ExtractView({
         }
     };
 
+    const handleRegenerate = async () => {
+        setIsLoading(true);
+        try {
+            const res = await apiFetch(`/api/meetings/${meetingId}/regenerate-notes`, {
+                method: "POST",
+                headers: buildUserHeaders(),
+            });
+
+            if (!res.ok) {
+                throw new Error("Failed to regenerate notes");
+            }
+
+            const data = await res.json();
+            setNotes(data.notes);
+            toast.success("Notes regenerated successfully!");
+            router.refresh();
+        } catch (error) {
+            toast.error("Failed to regenerate notes. Please try again.");
+            console.error(error);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
     if (!notes && !isLoading) {
         return (
             <div className="flex flex-col items-center justify-center py-12 space-y-6 text-center">
@@ -89,7 +113,7 @@ export function ExtractView({
     return (
         <div className="space-y-6">
             <div className="flex justify-end">
-                <Button variant="outline" size="sm" onClick={handleExtract}>
+                <Button variant="outline" size="sm" onClick={handleRegenerate} disabled={isLoading}>
                     Regenerate Notes
                 </Button>
             </div>

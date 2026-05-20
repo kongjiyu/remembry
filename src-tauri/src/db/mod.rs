@@ -5,6 +5,7 @@ pub mod meetings;
 pub mod documents;
 pub mod gemini_key_metadata;
 pub mod upload_jobs;
+pub mod events;
 
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -17,6 +18,7 @@ pub use meetings::MeetingNotes;
 pub use meetings::TranscriptionResult;
 pub use documents::Document;
 pub use upload_jobs::UploadJobRecord;
+pub use events::EventKnowledge;
 
 pub struct DbPool {
     conn: Arc<Mutex<Connection>>,
@@ -65,7 +67,9 @@ fn schema_sql() -> &'static str {
         file_type            TEXT NOT NULL,
         created_at           TEXT NOT NULL,
         transcription        TEXT,
-        notes_by_language    TEXT,
+        event_type           TEXT NOT NULL DEFAULT 'meeting',
+        event_tags           TEXT,
+        knowledge_by_language TEXT,
         default_language     TEXT DEFAULT 'en',
         available_languages  TEXT,
         FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
@@ -103,6 +107,9 @@ impl DbPool {
         }
         let conn = Connection::open(db_path)?;
         conn.execute_batch(schema_sql())?;
+        // Migration: add event_type, event_tags, knowledge_by_language columns
+        // to existing databases that only have notes_by_language
+        migrate_meetings_table(&conn).map_err(|e| anyhow::anyhow!("Migration failed: {}", e))?;
         log::info!("SQLite database initialized at {:?}", db_path);
         Ok(Self {
             conn: Arc::new(Mutex::new(conn)),
@@ -118,6 +125,45 @@ pub fn init_db(app_data_dir: &PathBuf) -> Result<()> {
     let db_path = app_data_dir.join("remembry.sqlite3");
     let pool = DbPool::new(&db_path)?;
     DB_POOL.set(Arc::new(Mutex::new(Some(pool)))).ok();
+    Ok(())
+}
+
+/// Migrate existing meetings table to add event_type, event_tags, knowledge_by_language columns.
+/// Existing rows get default values; notes_by_language is preserved as-is for later conversion.
+fn migrate_meetings_table(conn: &Connection) -> Result<(), String> {
+    let mut stmt = conn.prepare("PRAGMA table_info(meetings)").map_err(|e| e.to_string())?;
+    let columns: Vec<String> = stmt
+        .query_map([], |row| row.get::<_, String>(1))
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+
+    if !columns.contains(&"event_type".to_string()) {
+        conn.execute(
+            "ALTER TABLE meetings ADD COLUMN event_type TEXT NOT NULL DEFAULT 'meeting'",
+            [],
+        ).map_err(|e| e.to_string())?;
+    }
+
+    if !columns.contains(&"event_tags".to_string()) {
+        conn.execute(
+            "ALTER TABLE meetings ADD COLUMN event_tags TEXT",
+            [],
+        ).map_err(|e| e.to_string())?;
+    }
+
+    if !columns.contains(&"knowledge_by_language".to_string()) {
+        conn.execute(
+            "ALTER TABLE meetings ADD COLUMN knowledge_by_language TEXT",
+            [],
+        ).map_err(|e| e.to_string())?;
+        // Migrate existing notes_by_language → knowledge_by_language for non-null rows
+        conn.execute(
+            "UPDATE meetings SET knowledge_by_language = notes_by_language WHERE notes_by_language IS NOT NULL AND knowledge_by_language IS NULL",
+            [],
+        ).map_err(|e| e.to_string())?;
+    }
+
     Ok(())
 }
 

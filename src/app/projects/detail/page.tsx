@@ -19,11 +19,22 @@ import {
     Upload,
     MessageCircleQuestion,
     Trash2,
-    Loader2
+    Loader2,
+    Gavel,
+    ListTodo,
+    HelpCircle,
+    Sparkles,
 } from "lucide-react";
 import Link from "next/link";
 import { apiFetch } from "@/lib/apiFetch";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { formatMimeBadgeLabel } from "@/lib/meetingViews";
+import {
+    aggregateProjectKnowledge,
+    MeetingWithKnowledge,
+    ProjectKnowledgeOverview,
+    ProjectKnowledgeItem,
+} from "@/lib/eventKnowledge";
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -45,6 +56,8 @@ interface Meeting {
     uploadTime?: string;
     mimeType?: string;
     file_type?: string;
+    knowledge_by_language?: Record<string, unknown> | null;
+    default_language?: string | null;
 }
 
 interface Project {
@@ -61,6 +74,67 @@ interface ProjectDetail extends Project {
     meetings: Meeting[];
 }
 
+function formatDate(dateString?: string) {
+    if (!dateString) return 'Unknown date';
+    return new Date(dateString).toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+    });
+}
+
+function KnowledgeRow({ item, project }: { item: ProjectKnowledgeItem; project: ProjectDetail }) {
+    const eventUrl = `/events/detail?id=${encodeURIComponent(item.sourceEventId)}&projectName=${encodeURIComponent(project.id)}&displayName=${encodeURIComponent(project.display_name)}`;
+
+    const icon = item.itemType === 'decision'
+        ? <Gavel className="size-4 text-orange-500 shrink-0 mt-0.5" />
+        : item.itemType === 'action_item'
+        ? <ListTodo className="size-4 text-green-500 shrink-0 mt-0.5" />
+        : <HelpCircle className="size-4 text-purple-500 shrink-0 mt-0.5" />;
+
+    const typeBadge = item.itemType === 'decision'
+        ? <Badge variant="outline" className="text-xs text-orange-600 border-orange-200">Decision</Badge>
+        : item.itemType === 'action_item'
+        ? <Badge variant="outline" className="text-xs text-green-600 border-green-200">Action Item</Badge>
+        : <Badge variant="outline" className="text-xs text-purple-600 border-purple-200">Question</Badge>;
+
+    return (
+        <Link
+            href={eventUrl}
+            className="flex gap-3 px-4 py-3 rounded-lg border hover:bg-muted/50 transition-colors items-start group"
+        >
+            {icon}
+            <div className="flex-1 min-w-0 break-words whitespace-normal">
+                <p className="text-sm leading-relaxed">{item.content}</p>
+                <div className="flex flex-wrap gap-1.5 items-center mt-1.5">
+                    {typeBadge}
+                    {item.itemType === 'action_item' && item.assignee && (
+                        <Badge variant="outline" className="text-xs">Assignee: {item.assignee}</Badge>
+                    )}
+                    {item.itemType === 'action_item' && item.dueDate && (
+                        <Badge variant="outline" className="text-xs">Due: {item.dueDate}</Badge>
+                    )}
+                    {item.itemType === 'question' && item.questionStatus && (
+                        <Badge
+                            variant={item.questionStatus === "answered" ? "default" : item.questionStatus === "partially_answered" ? "outline" : "secondary"}
+                            className="text-xs"
+                        >
+                            {item.questionStatus.replace("_", " ")}
+                        </Badge>
+                    )}
+                    {item.answer && (
+                        <span className="text-xs text-muted-foreground italic">Answer: {item.answer}</span>
+                    )}
+                    <span className="text-xs text-muted-foreground">{item.sourceEventTitle}</span>
+                    <span className="text-xs text-muted-foreground">·</span>
+                    <span className="text-xs text-muted-foreground">{formatDate(item.sourceEventDate)}</span>
+                </div>
+            </div>
+        </Link>
+    );
+}
 
 function ProjectDetailContent() {
     const searchParams = useSearchParams();
@@ -76,6 +150,12 @@ function ProjectDetailContent() {
     const [meetingToDelete, setMeetingToDelete] = useState<Meeting | null>(null);
     const [showDeleteMeetingDialog, setShowDeleteMeetingDialog] = useState(false);
     const [isDeletingMeeting, setIsDeletingMeeting] = useState(false);
+    const [projectOverview, setProjectOverview] = useState<ProjectKnowledgeOverview | null>(null);
+    const [expandedTabs, setExpandedTabs] = useState<Record<string, boolean>>({});
+
+    const toggleExpanded = (tab: string) => {
+        setExpandedTabs(prev => ({ ...prev, [tab]: !prev[tab] }));
+    };
 
     useEffect(() => {
         if (projectName) {
@@ -104,10 +184,21 @@ function ProjectDetailContent() {
             const meetingsData = meetingsResponse.ok ? await meetingsResponse.json() : { meetings: [] };
             const meetings: Meeting[] = (meetingsData.meetings || []).map((m: Record<string, unknown>) => ({
                 id: String(m.id || ''),
-                display_name: String(m.title || m.display_name || 'Untitled Meeting'),
+                display_name: String(m.title || m.display_name || 'Untitled Event'),
                 uploadTime: String(m.created_at || ''),
                 mimeType: String(m.mime_type || m.file_type || ''),
+                knowledge_by_language: (m.knowledge_by_language as Record<string, unknown> | null) || null,
+                default_language: (m.default_language as string | null) || null,
             }));
+
+            const meetingsForOverview: MeetingWithKnowledge[] = meetings.map(m => ({
+                id: m.id,
+                title: m.display_name,
+                created_at: m.uploadTime || '',
+                knowledge_by_language: m.knowledge_by_language || null,
+                default_language: m.default_language || null,
+            }));
+            setProjectOverview(aggregateProjectKnowledge(meetingsForOverview));
 
             setProject({
                 ...foundProject,
@@ -121,7 +212,7 @@ function ProjectDetailContent() {
         }
     };
 
-    const filteredMeetings = (project?.meetings || []).filter(meeting =>
+    const filteredEvents = (project?.meetings || []).filter(meeting =>
         meeting.display_name.toLowerCase().includes(searchQuery.toLowerCase())
     ) || [];
 
@@ -163,9 +254,19 @@ function ProjectDetailContent() {
                 throw new Error(error.error || 'Failed to delete meeting');
             }
 
+            const remainingMeetings = project.meetings.filter(m => m.id !== meetingToDelete.id);
+            const meetingsForOverview: MeetingWithKnowledge[] = remainingMeetings.map(m => ({
+                id: m.id,
+                title: m.display_name,
+                created_at: m.uploadTime || '',
+                knowledge_by_language: m.knowledge_by_language || null,
+                default_language: m.default_language || null,
+            }));
+            setProjectOverview(aggregateProjectKnowledge(meetingsForOverview));
+
             setProject(prev => prev ? {
                 ...prev,
-                meetings: prev.meetings.filter(m => m.id !== meetingToDelete.id),
+                meetings: remainingMeetings,
                 meeting_count: (prev.meeting_count || 1) - 1,
             } : null);
         } catch (error) {
@@ -176,17 +277,6 @@ function ProjectDetailContent() {
             setShowDeleteMeetingDialog(false);
             setMeetingToDelete(null);
         }
-    };
-
-    const formatDate = (dateString?: string) => {
-        if (!dateString) return 'Unknown date';
-        return new Date(dateString).toLocaleDateString('en-US', {
-            month: 'short',
-            day: 'numeric',
-            year: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit'
-        });
     };
 
     if (loading) {
@@ -233,8 +323,7 @@ function ProjectDetailContent() {
         );
     }
 
-    const projectDetailUrl = `/projects/detail?id=${encodeURIComponent(project.id)}`;
-    const meetingsNewUrl = `/meetings/new?projectName=${encodeURIComponent(project.id)}&displayName=${encodeURIComponent(project.display_name)}`;
+    const meetingsNewUrl = `/events/new?projectName=${encodeURIComponent(project.id)}&displayName=${encodeURIComponent(project.display_name)}`;
 
     return (
         <DashboardLayout
@@ -255,7 +344,7 @@ function ProjectDetailContent() {
                     </Button>
                     <div className="flex gap-2">
                         <Button variant="outline" asChild>
-                            <Link href={`/ask?projectName=${encodeURIComponent(project.id)}&displayName=${encodeURIComponent(project.display_name)}`}>
+                            <Link href={`/ask?scope=project&projectName=${encodeURIComponent(project.id)}&displayName=${encodeURIComponent(project.display_name)}`}>
                                 <MessageCircleQuestion className="size-4 mr-2" />
                                 Ask Questions
                             </Link>
@@ -263,7 +352,7 @@ function ProjectDetailContent() {
                         <Button asChild className="gap-2">
                             <Link href={meetingsNewUrl}>
                                 <Upload className="size-4" />
-                                Upload Meeting
+                                Upload Event
                             </Link>
                         </Button>
                         <DropdownMenu>
@@ -287,7 +376,7 @@ function ProjectDetailContent() {
                     <Card>
                         <CardHeader className="flex flex-row items-center justify-between pb-2">
                             <CardTitle className="text-sm font-medium text-muted-foreground">
-                                Total Meetings
+                                Total Events
                             </CardTitle>
                             <Mic className="size-4 text-muted-foreground" />
                         </CardHeader>
@@ -336,15 +425,173 @@ function ProjectDetailContent() {
                     </Card>
                 </div>
 
-                {/* Meetings Section */}
+                {/* Project Knowledge Overview */}
+                {projectOverview && (
+                    <div className="space-y-4">
+                        <div className="flex items-center justify-between">
+                            <h2 className="text-xl font-semibold">Project Overview</h2>
+                        </div>
+                        <Tabs defaultValue="all" className="w-full">
+                            <TabsList className="w-fit max-w-full justify-start bg-transparent gap-1 p-0">
+                                <TabsTrigger value="all" className="h-8 flex-none px-3 whitespace-nowrap gap-1.5">
+                                    All
+                                    <Badge variant="secondary" className="text-xs">{projectOverview.allItems.length}</Badge>
+                                </TabsTrigger>
+                                <TabsTrigger value="decisions" className="h-8 flex-none px-3 whitespace-nowrap gap-1.5">
+                                    <Gavel className="size-4 text-orange-500" />
+                                    Decisions
+                                    <Badge variant="secondary" className="text-xs">{projectOverview.decisionsCount}</Badge>
+                                </TabsTrigger>
+                                <TabsTrigger value="action_items" className="h-8 flex-none px-3 whitespace-nowrap gap-1.5">
+                                    <ListTodo className="size-4 text-green-500" />
+                                    Action Items
+                                    <Badge variant="secondary" className="text-xs">{projectOverview.actionItemsCount}</Badge>
+                                </TabsTrigger>
+                                <TabsTrigger value="questions" className="h-8 flex-none px-3 whitespace-nowrap gap-1.5">
+                                    <HelpCircle className="size-4 text-purple-500" />
+                                    Questions
+                                    <Badge variant="secondary" className="text-xs">{projectOverview.questionsCount}</Badge>
+                                </TabsTrigger>
+                                <TabsTrigger value="needs_extraction" className="h-8 flex-none px-3 whitespace-nowrap gap-1.5">
+                                    <Sparkles className="size-4 text-muted-foreground" />
+                                    Needs Extraction
+                                    <Badge variant="secondary" className="text-xs">{projectOverview.missingEvents.length}</Badge>
+                                </TabsTrigger>
+                            </TabsList>
+
+                            <TabsContent value="all" className="mt-4">
+                                <div className="space-y-2">
+                                    {projectOverview.allItems.length === 0 ? (
+                                        <p className="text-sm text-muted-foreground py-8 text-center">No knowledge extracted yet.</p>
+                                    ) : (
+                                        <>
+                                            {(expandedTabs["all"] ? projectOverview.allItems : projectOverview.allItems.slice(0, 4)).map((item, i) => (
+                                                <KnowledgeRow key={i} item={item} project={project} />
+                                            ))}
+                                            {projectOverview.allItems.length > 4 && (
+                                                <button
+                                                    onClick={() => toggleExpanded("all")}
+                                                    className="text-xs text-muted-foreground hover:text-foreground transition-colors py-1 px-2"
+                                                >
+                                                    {expandedTabs["all"] ? "Show fewer" : `Show all ${projectOverview.allItems.length}`}
+                                                </button>
+                                            )}
+                                        </>
+                                    )}
+                                </div>
+                            </TabsContent>
+
+                            <TabsContent value="decisions" className="mt-4">
+                                <div className="space-y-2">
+                                    {projectOverview.decisions.length === 0 ? (
+                                        <p className="text-sm text-muted-foreground py-8 text-center">No decisions yet.</p>
+                                    ) : (
+                                        <>
+                                            {(expandedTabs["decisions"] ? projectOverview.decisions : projectOverview.decisions.slice(0, 3)).map((item, i) => (
+                                                <KnowledgeRow key={i} item={item} project={project} />
+                                            ))}
+                                            {projectOverview.decisions.length > 3 && (
+                                                <button
+                                                    onClick={() => toggleExpanded("decisions")}
+                                                    className="text-xs text-muted-foreground hover:text-foreground transition-colors py-1 px-2"
+                                                >
+                                                    {expandedTabs["decisions"] ? "Show fewer" : `Show all ${projectOverview.decisions.length}`}
+                                                </button>
+                                            )}
+                                        </>
+                                    )}
+                                </div>
+                            </TabsContent>
+
+                            <TabsContent value="action_items" className="mt-4">
+                                <div className="space-y-2">
+                                    {projectOverview.actionItems.length === 0 ? (
+                                        <p className="text-sm text-muted-foreground py-8 text-center">No action items yet.</p>
+                                    ) : (
+                                        <>
+                                            {(expandedTabs["action_items"] ? projectOverview.actionItems : projectOverview.actionItems.slice(0, 3)).map((item, i) => (
+                                                <KnowledgeRow key={i} item={item} project={project} />
+                                            ))}
+                                            {projectOverview.actionItems.length > 3 && (
+                                                <button
+                                                    onClick={() => toggleExpanded("action_items")}
+                                                    className="text-xs text-muted-foreground hover:text-foreground transition-colors py-1 px-2"
+                                                >
+                                                    {expandedTabs["action_items"] ? "Show fewer" : `Show all ${projectOverview.actionItems.length}`}
+                                                </button>
+                                            )}
+                                        </>
+                                    )}
+                                </div>
+                            </TabsContent>
+
+                            <TabsContent value="questions" className="mt-4">
+                                <div className="space-y-2">
+                                    {projectOverview.questions.length === 0 ? (
+                                        <p className="text-sm text-muted-foreground py-8 text-center">No questions yet.</p>
+                                    ) : (
+                                        <>
+                                            {(expandedTabs["questions"] ? projectOverview.questions : projectOverview.questions.slice(0, 3)).map((item, i) => (
+                                                <KnowledgeRow key={i} item={item} project={project} />
+                                            ))}
+                                            {projectOverview.questions.length > 3 && (
+                                                <button
+                                                    onClick={() => toggleExpanded("questions")}
+                                                    className="text-xs text-muted-foreground hover:text-foreground transition-colors py-1 px-2"
+                                                >
+                                                    {expandedTabs["questions"] ? "Show fewer" : `Show all ${projectOverview.questions.length}`}
+                                                </button>
+                                            )}
+                                        </>
+                                    )}
+                                </div>
+                            </TabsContent>
+
+                            <TabsContent value="needs_extraction" className="mt-4">
+                                <div className="flex flex-wrap gap-2">
+                                    {projectOverview.missingEvents.length === 0 ? (
+                                        <p className="text-sm text-muted-foreground py-8 text-center">All events have knowledge extracted.</p>
+                                    ) : (
+                                        <>
+                                            {(expandedTabs["needs_extraction"] ? projectOverview.missingEvents : projectOverview.missingEvents.slice(0, 6)).map((evt) => {
+                                                const meetingUrl = `/events/detail?id=${encodeURIComponent(evt.id)}&projectName=${encodeURIComponent(project.id)}&displayName=${encodeURIComponent(project.display_name)}`;
+                                                return (
+                                                    <Link
+                                                        key={evt.id}
+                                                        href={meetingUrl}
+                                                        className="inline-flex items-center gap-1.5 px-3 py-2 rounded-md border text-sm hover:bg-muted transition-colors"
+                                                    >
+                                                        <FileText className="size-4 text-muted-foreground" />
+                                                        <span>{evt.title || "Untitled Event"}</span>
+                                                        <span className="text-xs text-muted-foreground ml-1">{formatDate(evt.date)}</span>
+                                                    </Link>
+                                                );
+                                            })}
+                                            {projectOverview.missingEvents.length > 6 && (
+                                                <button
+                                                    onClick={() => toggleExpanded("needs_extraction")}
+                                                    className="text-xs text-muted-foreground hover:text-foreground transition-colors py-1 px-2"
+                                                >
+                                                    {expandedTabs["needs_extraction"] ? "Show fewer" : `Show all ${projectOverview.missingEvents.length}`}
+                                                </button>
+                                            )}
+                                        </>
+                                    )}
+                                </div>
+                            </TabsContent>
+                        </Tabs>
+                    </div>
+                )}
+
+                {/* Events Section */}
                 <div className="space-y-4">
                     <div className="flex items-center justify-between gap-4">
-                        <h2 className="text-xl font-semibold">Meetings</h2>
+                        <h2 className="text-xl font-semibold">Events</h2>
                         <div className="flex-1 max-w-sm">
                             <div className="relative">
                                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
                                 <Input
-                                    placeholder="Search meetings..."
+                                    placeholder="Search events..."
                                     className="pl-9"
                                     value={searchQuery}
                                     onChange={(e) => setSearchQuery(e.target.value)}
@@ -353,24 +600,24 @@ function ProjectDetailContent() {
                         </div>
                     </div>
 
-                    {filteredMeetings.length === 0 ? (
+                    {filteredEvents.length === 0 ? (
                         <Card className="py-12">
                             <CardContent className="text-center">
                                 <Mic className="size-12 text-muted-foreground mx-auto mb-4" />
                                 <h3 className="text-lg font-semibold mb-2">
-                                    {searchQuery ? "No meetings found" : "No meetings yet"}
+                                    {searchQuery ? "No events found" : "No events yet"}
                                 </h3>
                                 <p className="text-muted-foreground mb-4">
                                     {searchQuery
                                         ? "Try adjusting your search query"
-                                        : "Upload your first meeting recording to get started"
+                                        : "Upload your first event recording to get started"
                                     }
                                 </p>
                                 {!searchQuery && (
                                     <Button asChild>
                                         <Link href={meetingsNewUrl}>
                                             <Plus className="size-4 mr-2" />
-                                            Upload Meeting
+                                            Upload Event
                                         </Link>
                                     </Button>
                                 )}
@@ -378,9 +625,9 @@ function ProjectDetailContent() {
                         </Card>
                     ) : (
                         <div className="grid gap-4">
-                            {filteredMeetings.map((meeting, index) => {
+                            {filteredEvents.map((meeting, index) => {
                                 const encodedDocName = encodeURIComponent(meeting.id);
-                                const meetingUrl = `/meetings/detail?id=${encodedDocName}&projectName=${encodeURIComponent(project.id)}&displayName=${encodeURIComponent(project.display_name)}`;
+                                const meetingUrl = `/events/detail?id=${encodedDocName}&projectName=${encodeURIComponent(project.id)}&displayName=${encodeURIComponent(project.display_name)}`;
                                 return (
                                     <Card key={meeting.id || index} className="group hover:shadow-md transition-shadow relative">
                                         <CardHeader>
@@ -394,7 +641,7 @@ function ProjectDetailContent() {
                                                     </div>
                                                     <div className="flex-1 min-w-0">
                                                         <CardTitle className="text-base line-clamp-1">
-                                                            {meeting.display_name || 'Untitled Meeting'}
+                                                            {meeting.display_name || 'Untitled Event'}
                                                         </CardTitle>
                                                         <CardDescription className="flex items-center gap-2 mt-1">
                                                             <Calendar className="size-3" />
@@ -427,7 +674,7 @@ function ProjectDetailContent() {
                                                             </Link>
                                                         </DropdownMenuItem>
                                                         <DropdownMenuItem asChild>
-                                                            <Link href={`/ask?type=meeting&id=${encodeURIComponent(meeting.id)}&name=${encodeURIComponent(meeting.display_name)}&projectName=${encodeURIComponent(project.id)}`}>
+                                                            <Link href={`/ask?scope=meeting&id=${encodeURIComponent(meeting.id)}&name=${encodeURIComponent(meeting.display_name)}&projectName=${encodeURIComponent(project.id)}&displayName=${encodeURIComponent(project.display_name)}`}>
                                                                 Ask Questions
                                                             </Link>
                                                         </DropdownMenuItem>
@@ -440,7 +687,7 @@ function ProjectDetailContent() {
                                                             className="text-destructive"
                                                         >
                                                             <Trash2 className="size-4 mr-2" />
-                                                            Delete Meeting
+                                                            Delete Event
                                                         </DropdownMenuItem>
                                                     </DropdownMenuContent>
                                                 </DropdownMenu>
@@ -461,7 +708,7 @@ function ProjectDetailContent() {
                         <DialogTitle>Delete Project</DialogTitle>
                         <DialogDescription>
                             Are you sure you want to delete &quot;{project?.display_name}&quot;? This will permanently delete
-                            the project and all {project?.meeting_count} associated meeting(s) from the local store. This action cannot be undone.
+                            the project and all {project?.meeting_count} associated event(s) from the local store. This action cannot be undone.
                         </DialogDescription>
                     </DialogHeader>
                     <DialogFooter>
@@ -493,11 +740,11 @@ function ProjectDetailContent() {
                 </DialogContent>
             </Dialog>
 
-            {/* Delete Meeting Confirmation Dialog */}
+            {/* Delete Event Confirmation Dialog */}
             <Dialog open={showDeleteMeetingDialog} onOpenChange={setShowDeleteMeetingDialog}>
                 <DialogContent>
                     <DialogHeader>
-                        <DialogTitle>Delete Meeting</DialogTitle>
+                        <DialogTitle>Delete Event</DialogTitle>
                         <DialogDescription>
                             Are you sure you want to delete &quot;{meetingToDelete?.display_name}&quot;? This action cannot be undone.
                         </DialogDescription>
@@ -526,7 +773,7 @@ function ProjectDetailContent() {
                             ) : (
                                 <>
                                     <Trash2 className="size-4 mr-2" />
-                                    Delete Meeting
+                                    Delete Event
                                 </>
                             )}
                         </Button>

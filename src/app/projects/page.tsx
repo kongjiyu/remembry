@@ -36,14 +36,14 @@ interface Project {
 
 export default function ProjectsPage() {
     const [projects, setProjects] = useState<Project[]>([]);
-    const [meetings, setMeetings] = useState<NormalizedMeeting[]>([]);
+    const [meetings, setEvents] = useState<NormalizedMeeting[]>([]);
     const [loading, setLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState("");
     const [projectToDelete, setProjectToDelete] = useState<Project | null>(null);
     const [isDeleting, setIsDeleting] = useState(false);
 
     useEffect(() => {
-        Promise.all([fetchProjects(), fetchMeetings()]).finally(() => setLoading(false));
+        Promise.all([fetchProjects(), fetchEvents()]).finally(() => setLoading(false));
     }, []);
 
     const fetchProjects = async () => {
@@ -57,14 +57,14 @@ export default function ProjectsPage() {
         }
     };
 
-    const fetchMeetings = async () => {
+    const fetchEvents = async () => {
         try {
             const response = await apiFetch('/api/meetings');
             if (!response.ok) throw new Error('Failed to fetch meetings');
             const data = await response.json();
-            const rawMeetings: Record<string, unknown>[] = data.meetings || [];
+            const rawEvents: Record<string, unknown>[] = data.meetings || [];
             const projectMap = buildProjectMap(projects);
-            setMeetings(rawMeetings.map(m => normalizeMeeting(m, projectMap)));
+            setEvents(rawEvents.map(m => normalizeMeeting(m, projectMap)));
         } catch (error) {
             console.error('Error fetching meetings:', error);
         }
@@ -73,12 +73,12 @@ export default function ProjectsPage() {
     useEffect(() => {
         if (projects.length > 0) {
             const projectMap = buildProjectMap(projects);
-            setMeetings(prev => prev.map(m => normalizeMeeting(m, projectMap)));
+            setEvents(prev => prev.map(m => normalizeMeeting(m, projectMap)));
         }
     }, [projects]);
 
-    const meetingCounts = countMeetingsByProject(meetings);
-    const totalMeetingCount = meetings.length;
+    const eventCounts = countMeetingsByProject(meetings);
+    const totalEventCount = meetings.length;
 
     const handleDeleteProject = async () => {
         if (!projectToDelete) return;
@@ -108,7 +108,7 @@ export default function ProjectsPage() {
         project.display_name.toLowerCase().includes(searchQuery.toLowerCase())
     );
 
-    const getMeetingCount = (projectId: string) => meetingCounts.get(projectId) || 0;
+    const getEventCount = (projectId: string) => eventCounts.get(projectId) || 0;
 
     return (
         <DashboardLayout
@@ -177,13 +177,13 @@ export default function ProjectsPage() {
                     <Card>
                         <CardHeader className="flex flex-row items-center justify-between pb-2">
                             <CardTitle className="text-sm font-medium text-muted-foreground">
-                                Total Meetings
+                                Total Events
                             </CardTitle>
                             <CheckCircle2 className="size-4 text-muted-foreground" />
                         </CardHeader>
                         <CardContent>
                             <div className="text-3xl font-bold">
-                                {totalMeetingCount}
+                                {totalEventCount}
                             </div>
                             <p className="text-xs text-muted-foreground mt-1">
                                 Across all projects
@@ -228,7 +228,7 @@ export default function ProjectsPage() {
                                 day: 'numeric',
                                 year: 'numeric'
                             });
-                            const meetingCount = getMeetingCount(project.id);
+                            const eventCount = getEventCount(project.id);
 
                             return (
                                 <Card key={project.id} className="hover:shadow-md transition-shadow">
@@ -263,14 +263,14 @@ export default function ProjectsPage() {
                                             </DropdownMenu>
                                         </div>
                                         <CardDescription className="mt-2">
-                                            {meetingCount} {meetingCount === 1 ? 'meeting' : 'meetings'} in this project
+                                            {eventCount} {eventCount === 1 ? 'event' : 'events'} in this project
                                         </CardDescription>
                                     </CardHeader>
                                     <CardContent>
                                         <div className="space-y-3">
                                             <div className="flex items-center justify-between text-sm">
-                                                <span className="text-muted-foreground">Meetings</span>
-                                                <span className="font-semibold">{meetingCount}</span>
+                                                <span className="text-muted-foreground">Events</span>
+                                                <span className="font-semibold">{eventCount}</span>
                                             </div>
                                             <div className="flex items-center justify-between">
                                                 <span className="text-xs text-muted-foreground">
@@ -279,9 +279,9 @@ export default function ProjectsPage() {
                                                 <Badge className="bg-success/10 text-success border-success/20">Active</Badge>
                                             </div>
                                             <div className="pt-2">
-                                                <Button asChild className="w-full" variant={meetingCount === 0 ? "default" : "outline"}>
-                                                    <Link href={meetingCount === 0 ? `/meetings/new` : `/projects/detail?id=${encodeURIComponent(project.id)}`}>
-                                                        {meetingCount === 0 ? (
+                                                <Button asChild className="w-full" variant={eventCount === 0 ? "default" : "outline"}>
+                                                    <Link href={eventCount === 0 ? `/events/new` : `/projects/detail?id=${encodeURIComponent(project.id)}`}>
+                                                        {eventCount === 0 ? (
                                                             <>
                                                                 <Plus className="size-4 mr-2" />
                                                                 Upload Recording
@@ -308,7 +308,7 @@ export default function ProjectsPage() {
                         <DialogTitle>Delete Project</DialogTitle>
                         <DialogDescription>
                             Are you sure you want to delete &quot;{projectToDelete?.display_name}&quot;? This will permanently delete
-                            the project and all {projectToDelete ? getMeetingCount(projectToDelete.id) : 0} associated meeting(s) from the local store. This action cannot be undone.
+                            the project and all {projectToDelete ? getEventCount(projectToDelete.id) : 0} associated event(s) from the local store. This action cannot be undone.
                         </DialogDescription>
                     </DialogHeader>
                     <DialogFooter>

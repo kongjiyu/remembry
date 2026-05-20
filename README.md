@@ -102,7 +102,7 @@ The Gemini key is stored in the operating system credential store through the Ru
 
 ### Notes for Developers
 
-- `npm run tauri:dev` loads the app from `http://localhost:3000` (the Next.js dev server) for live frontend changes with HMR.
+- `npm run tauri:dev` loads the app from `http://localhost:3010` (the Next.js dev server) for live frontend changes with HMR.
 - `npm run build` (or `npm run build:tauri`) is only needed to regenerate the static `out/` directory for production Tauri builds.
 - If the frontend looks stale in the Tauri window, restart `npm run tauri:dev` — do not rebuild.
 - Do not use `npm run dev` as the main app entry point. It only starts the Next.js frontend in a browser, where Tauri commands are unavailable.

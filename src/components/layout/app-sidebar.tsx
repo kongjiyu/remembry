@@ -45,8 +45,8 @@ const navItems = [
         icon: FolderKanban,
     },
     {
-        title: "Meetings",
-        url: "/meetings",
+        title: "Events",
+        url: "/events",
         icon: Mic,
     },
 ];
@@ -74,7 +74,7 @@ export function AppSidebar() {
                                 </div>
                                 <div className="flex flex-col gap-0.5 leading-none group-data-[collapsible=icon]:hidden">
                                     <span className="font-semibold text-lg tracking-tight">Remembry</span>
-                                    <span className="text-xs text-muted-foreground">AI Meeting Notes</span>
+                                    <span className="text-xs text-muted-foreground">AI Event Notes</span>
                                 </div>
                             </Link>
                         </SidebarMenuButton>
